@@ -17,7 +17,6 @@
     "android": {
       "package": "com.antigravity.restaurantposkds",
       "versionCode": 1,
-      "usesCleartextTraffic": true,
       "permissions": [
         "INTERNET",
         "ACCESS_NETWORK_STATE"
@@ -32,7 +31,21 @@
         {
           "faceIDPermission": "Allow Spicy Zaika POS to securely authenticate staff credentials."
         }
+      ],
+      "expo-asset",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "abe881c4-abeb-4fa6-83c7-1310611ff0cd"
+      }
+    }
   }
 }
