@@ -13,7 +13,7 @@ import { getSecureItem, saveSecureItem } from '../utils/secureStore';
 
 const SERVER_HOST_KEY = 'pos_kds_server_host';
 const DEFAULT_PORT = 5000;
-const FALLBACK_LAN_IP = '10.18.123.121'; // Current host machine LAN IP
+const FALLBACK_LAN_IP = '10.70.249.121'; // Current host machine LAN IP
 
 // In-memory cache of resolved host/URL
 let activeHost = null;
