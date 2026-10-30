@@ -1,0 +1,38 @@
+{
+  "expo": {
+    "name": "Spicy Zaika POS & KDS",
+    "slug": "restaurant-pos-kds",
+    "version": "1.0.0",
+    "orientation": "default",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "backgroundColor": "#FFFFFF",
+      "resizeMode": "contain"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.antigravity.restaurantposkds"
+    },
+    "android": {
+      "package": "com.antigravity.restaurantposkds",
+      "versionCode": 1,
+      "usesCleartextTraffic": true,
+      "permissions": [
+        "INTERNET",
+        "ACCESS_NETWORK_STATE"
+      ],
+      "adaptiveIcon": {
+        "backgroundColor": "#FFFFFF"
+      }
+    },
+    "plugins": [
+      [
+        "expo-secure-store",
+        {
+          "faceIDPermission": "Allow Spicy Zaika POS to securely authenticate staff credentials."
+        }
+      ]
+    ]
+  }
+}

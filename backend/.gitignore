@@ -1,0 +1,24 @@
+# Backend .gitignore - Strict Security Enforcement
+
+# Secrets and Credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.cert
+
+# Node dependencies
+node_modules/
+
+# Logs & Debug
+logs/
+*.log
+npm-debug.log*
+
+# OS & Temp
+.DS_Store
+Thumbs.db
+tmp/
+coverage/
+
