@@ -33,7 +33,7 @@ const getMenu = async (req, res, next) => {
       price: Number(item.price ?? item.cost ?? item.rate ?? 0),
       category: item.category || 'All',
       isAvailable: item.isAvailable !== false,
-      description: item.description || '',
+      description: item.desc || item.description || '',
     }));
 
     return res.status(200).json({

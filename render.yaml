@@ -15,4 +15,7 @@ services:
         value: '*'
       - key: JWT_SECRET
         generateValue: true
+      - key: MONGO_URI
+        value: mongodb+srv://shree_admin:Imbatman2101@cluster0.d1n1vfm.mongodb.net/restaurant?retryWrites=true&w=majority
+
 
