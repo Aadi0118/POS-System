@@ -32,22 +32,12 @@ export function normalizeServerBaseUrl(input) {
   const trimmed = input.trim().replace(/\/+$/, '');
 
   // 1. Full HTTPS / HTTP URL (Cloud deployments like Render, Railway, ngrok)
-  if (trimmed.startsWith('https://') || trimmed.startsWith('http://')) {
+  if (trimmed.startsWith('https://')) {
     return trimmed;
   }
 
-  // If input was saved as old local 10.x.x.x IP from past test sessions, automatically upgrade to permanent cloud
-  if (trimmed.startsWith('10.70.') || trimmed.startsWith('10.221.')) {
-    return PERMANENT_CLOUD_URL;
-  }
-
-  // 2. Host with explicit port specified (e.g. "192.168.1.50:5000")
-  if (trimmed.includes(':')) {
-    return `http://${trimmed}`;
-  }
-
-  // 3. Domain or IP without port (e.g. "10.18.123.121") -> defaults to port 5000
-  return `http://${trimmed}:${DEFAULT_PORT}`;
+  // Automatically upgrade any old local LAN IP (e.g. 10.x, 192.168.x) to permanent cloud backend
+  return PERMANENT_CLOUD_URL;
 }
 
 /**
@@ -66,13 +56,8 @@ export async function getResolvedHost() {
 
   try {
     const saved = await getSecureItem(SERVER_HOST_KEY);
-    // Ignore stale local LAN IPs from previous test builds
-    if (
-      saved &&
-      saved.trim() &&
-      !saved.startsWith('10.70.') &&
-      !saved.startsWith('10.221.')
-    ) {
+    // Only accept saved host if it is an explicit HTTPS cloud address
+    if (saved && saved.trim() && saved.trim().startsWith('https://')) {
       activeHost = saved.trim();
       return activeHost;
     }

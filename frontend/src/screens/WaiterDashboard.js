@@ -51,6 +51,7 @@ const WaiterDashboard = () => {
   const [menuItems, setMenuItems] = useState([]);
   const [categories, setCategories] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('All');
+  const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
 
   // Active table interaction modal
@@ -120,6 +121,7 @@ const WaiterDashboard = () => {
 
   const handleTablePress = (table) => {
     setSelectedTable(table);
+    setSearchQuery('');
     if (table.status === 'Dirty') {
       Alert.alert(
         'Table Requires Sanitation',
@@ -285,10 +287,16 @@ const WaiterDashboard = () => {
     );
   };
 
-  const filteredMenuItems =
-    selectedCategory === 'All'
-      ? menuItems
-      : menuItems.filter((i) => i.category === selectedCategory);
+  const filteredMenuItems = menuItems.filter((item) => {
+    const query = searchQuery.trim().toLowerCase();
+    if (query) {
+      const matchName = item.name && item.name.toLowerCase().includes(query);
+      const matchCat = item.category && item.category.toLowerCase().includes(query);
+      const matchDesc = item.description && item.description.toLowerCase().includes(query);
+      return matchName || matchCat || matchDesc;
+    }
+    return selectedCategory === 'All' || item.category === selectedCategory;
+  });
 
   const isOrderLocked = activeOrder && activeOrder.status !== 'Pending';
   const occupiedCount = tables.filter((t) => t.status === 'Occupied').length;
@@ -481,37 +489,111 @@ const WaiterDashboard = () => {
             {modalViewMode === 'catalog' ? (
               /* Catalog Section */
               <View style={styles.catalogSection}>
-                {/* Category Carousel */}
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catScroll}>
-                  {categories.map((cat) => (
-                    <TouchableOpacity
-                      key={cat}
-                      style={[
-                        styles.catPill,
-                        selectedCategory === cat && styles.catPillActive,
-                      ]}
-                      onPress={() => setSelectedCategory(cat)}
-                      activeOpacity={0.75}
-                    >
-                      <Text style={styles.catIcon}>{CATEGORY_ICONS[cat] || '🍲'}</Text>
-                      <Text
-                        style={[
-                          styles.catPillText,
-                          selectedCategory === cat && styles.catPillTextActive,
-                        ]}
+                {/* Waiter Real-Time Search Bar */}
+                <View style={styles.searchBarWrapper}>
+                  <View style={styles.searchBarContainer}>
+                    <Text style={styles.searchBarIcon}>🔍</Text>
+                    <TextInput
+                      style={styles.searchBarInput}
+                      placeholder={
+                        menuItems.length > 0
+                          ? `Search ${menuItems.length} dishes (e.g. Paratha, Chai)...`
+                          : 'Search menu dishes...'
+                      }
+                      placeholderTextColor={colors.textMuted}
+                      value={searchQuery}
+                      onChangeText={setSearchQuery}
+                      autoCorrect={false}
+                      autoCapitalize="none"
+                      returnKeyType="search"
+                      clearButtonMode="while-editing"
+                    />
+                    {searchQuery.length > 0 && (
+                      <TouchableOpacity
+                        style={styles.searchClearBtn}
+                        onPress={() => setSearchQuery('')}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        activeOpacity={0.7}
                       >
-                        {cat}
+                        <Text style={styles.searchClearBtnText}>✕</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+
+                  {/* Search Metadata & Quick Reset */}
+                  {searchQuery.trim().length > 0 && (
+                    <View style={styles.searchStatusRow}>
+                      <Text style={styles.searchStatusText}>
+                        Found {filteredMenuItems.length} dish{filteredMenuItems.length !== 1 ? 'es' : ''} for "{searchQuery}"
                       </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
+                      <TouchableOpacity
+                        style={styles.searchResetLink}
+                        onPress={() => setSearchQuery('')}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Text style={styles.searchResetLinkText}>Clear Search ✕</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+
+                {/* Category Carousel (displayed when not actively searching) */}
+                {!searchQuery.trim() && (
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catScroll}>
+                    {categories.map((cat) => (
+                      <TouchableOpacity
+                        key={cat}
+                        style={[
+                          styles.catPill,
+                          selectedCategory === cat && styles.catPillActive,
+                        ]}
+                        onPress={() => setSelectedCategory(cat)}
+                        activeOpacity={0.75}
+                      >
+                        <Text style={styles.catIcon}>{CATEGORY_ICONS[cat] || '🍲'}</Text>
+                        <Text
+                          style={[
+                            styles.catPillText,
+                            selectedCategory === cat && styles.catPillTextActive,
+                          ]}
+                        >
+                          {cat}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                )}
 
                 {/* Items List */}
                 <FlatList
                   data={filteredMenuItems}
                   keyExtractor={(item) => item._id}
                   showsVerticalScrollIndicator={false}
+                  keyboardShouldPersistTaps="handled"
                   contentContainerStyle={{ paddingBottom: cart.length > 0 ? 80 : 20 }}
+                  ListEmptyComponent={
+                    <View style={styles.emptySearchContainer}>
+                      <Text style={styles.emptySearchEmoji}>🔍🍲</Text>
+                      <Text style={styles.emptySearchTitle}>No Dishes Found</Text>
+                      <Text style={styles.emptySearchSubtitle}>
+                        {searchQuery.trim()
+                          ? `No menu courses match "${searchQuery}". Please check the dish name or tap below to browse all items.`
+                          : 'No menu items available in this category.'}
+                      </Text>
+                      {searchQuery.trim().length > 0 ? (
+                        <TouchableOpacity
+                          style={styles.emptySearchActionBtn}
+                          onPress={() => {
+                            setSearchQuery('');
+                            setSelectedCategory('All');
+                          }}
+                          activeOpacity={0.8}
+                        >
+                          <Text style={styles.emptySearchActionText}>Show All Dishes ({menuItems.length})</Text>
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
+                  }
                   renderItem={({ item }) => (
                     <View style={styles.menuItemCard}>
                       <View style={styles.menuItemInfo}>
@@ -958,6 +1040,112 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     backgroundColor: colors.bg,
     position: 'relative',
+  },
+  searchBarWrapper: {
+    marginBottom: 10,
+  },
+  searchBarContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: colors.cardBorderStrong,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: Platform.OS === 'ios' ? 10 : 6,
+    shadowColor: colors.shadowColor,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  searchBarIcon: {
+    fontSize: 16,
+    marginRight: 8,
+  },
+  searchBarInput: {
+    flex: 1,
+    fontSize: 14,
+    color: colors.textPrimary,
+    fontWeight: '600',
+    paddingVertical: 4,
+  },
+  searchClearBtn: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#F3F4F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 6,
+  },
+  searchClearBtnText: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: colors.textSecondary,
+    lineHeight: 14,
+  },
+  searchStatusRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 6,
+    paddingHorizontal: 4,
+  },
+  searchStatusText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.goldDark,
+  },
+  searchResetLink: {
+    paddingVertical: 2,
+    paddingHorizontal: 6,
+  },
+  searchResetLinkText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.primary,
+    textDecorationLine: 'underline',
+  },
+  emptySearchContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+    paddingHorizontal: 20,
+  },
+  emptySearchEmoji: {
+    fontSize: 42,
+    marginBottom: 10,
+  },
+  emptySearchTitle: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: colors.textPrimary,
+    marginBottom: 6,
+  },
+  emptySearchSubtitle: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 18,
+    marginBottom: 16,
+  },
+  emptySearchActionBtn: {
+    backgroundColor: colors.primary,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  emptySearchActionText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
   catScroll: {
     flexGrow: 0,

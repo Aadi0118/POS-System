@@ -9,8 +9,10 @@ const mongoose = require('mongoose');
 
 let mongodInstance = null;
 
+const ATLAS_URI = 'mongodb+srv://shree_admin:Imbatman2101@cluster0.d1n1vfm.mongodb.net/restaurant?retryWrites=true&w=majority';
+
 const connectDB = async () => {
-  const mongoUri = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/restaurant_pos';
+  const mongoUri = process.env.MONGO_URI || ATLAS_URI;
 
   const options = {
     autoIndex: process.env.NODE_ENV !== 'production',
