@@ -1,18 +1,21 @@
 {
   "expo": {
-    "name": "Spicy Zaika POS & KDS",
+    "name": "Shree Restaurant POS",
     "slug": "restaurant-pos-kds",
     "version": "1.0.0",
     "orientation": "default",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
+    "icon": "./assets/icon.png",
     "splash": {
+      "image": "./assets/splash-icon.png",
       "backgroundColor": "#FFFFFF",
       "resizeMode": "contain"
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.antigravity.restaurantposkds"
+      "bundleIdentifier": "com.antigravity.restaurantposkds",
+      "icon": "./assets/icon.png"
     },
     "android": {
       "package": "com.antigravity.restaurantposkds",
@@ -22,6 +25,7 @@
         "ACCESS_NETWORK_STATE"
       ],
       "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#FFFFFF"
       }
     },

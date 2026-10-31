@@ -5,7 +5,7 @@
  */
 
 import React from 'react';
-import { View, Text, ActivityIndicator, StyleSheet, StatusBar, Platform } from 'react-native';
+import { View, Text, ActivityIndicator, StyleSheet, StatusBar, Platform, Image } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -60,9 +60,13 @@ function AppNavigator() {
     return (
       <View style={styles.splashContainer}>
         <View style={styles.logoBadge}>
-          <Text style={styles.splashLogo}>✨</Text>
+          <Image
+            source={require('./assets/logo.png')}
+            style={styles.splashLogoImage}
+            resizeMode="contain"
+          />
         </View>
-        <Text style={styles.splashTitle}>SPICY ZAIKA</Text>
+        <Text style={styles.splashTitle}>SHREE RESTAURANT</Text>
         <Text style={styles.splashSubtitle}>Fine Dining Operations • POS & KDS Suite</Text>
         <ActivityIndicator size="small" color={colors.primary} style={styles.spinner} />
       </View>
@@ -121,20 +125,25 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   logoBadge: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: colors.primaryLight,
-    borderWidth: 1.5,
-    borderColor: colors.primary,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 2,
+    borderColor: colors.cardBorderGold,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 20,
+    overflow: 'hidden',
     shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.15,
     shadowRadius: 16,
     elevation: 4,
+  },
+  splashLogoImage: {
+    width: '100%',
+    height: '100%',
   },
   splashLogo: {
     fontSize: 36,

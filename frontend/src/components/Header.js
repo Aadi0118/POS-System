@@ -6,7 +6,7 @@
  */
 
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import colors from '../theme/colors';
 
@@ -23,11 +23,15 @@ const Header = ({ title, subtitle }) => {
         <View style={styles.leftSection}>
           <View style={styles.titleRow}>
             <View style={styles.crestCircle}>
-              <Text style={styles.crestEmoji}>👑</Text>
+              <Image
+                source={require('../../assets/logo.png')}
+                style={styles.headerLogo}
+                resizeMode="contain"
+              />
             </View>
             <View style={styles.titleTextContainer}>
               <Text style={styles.title} numberOfLines={1} ellipsizeMode="tail">
-                {title || 'Spicy Zaika'}
+                {title || 'Shree Restaurant'}
               </Text>
               <View style={styles.serviceRow}>
                 <Text style={styles.serviceSparkle}>✦</Text>
@@ -102,20 +106,25 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   crestCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.primaryLight,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#FFFFFF',
     borderWidth: 1.5,
     borderColor: colors.cardBorderGold,
     justifyContent: 'center',
     alignItems: 'center',
+    overflow: 'hidden',
     shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 4,
     elevation: 2,
     flexShrink: 0,
+  },
+  headerLogo: {
+    width: '100%',
+    height: '100%',
   },
   crestEmoji: {
     fontSize: 14,

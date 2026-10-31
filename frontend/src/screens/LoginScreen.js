@@ -17,6 +17,7 @@ import {
   Platform,
   Modal,
   TextInput,
+  Image,
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import apiClient from '../api/client';
@@ -187,9 +188,13 @@ const LoginScreen = () => {
             {/* Opulent Brand Crest */}
             <View style={styles.brandHeader}>
               <View style={styles.crestBadge}>
-                <Text style={styles.crestEmoji}>👑</Text>
+                <Image
+                  source={require('../../assets/logo.png')}
+                  style={styles.brandLogoImage}
+                  resizeMode="contain"
+                />
               </View>
-              <Text style={styles.brandTitle}>SPICY ZAIKA</Text>
+              <Text style={styles.brandTitle}>SHREE RESTAURANT</Text>
               <MichelinStars />
               <Text style={styles.brandSubtitle}>Haute Gastronomie • POS & KDS Terminal</Text>
               <View style={styles.ornamentLine} />
@@ -468,20 +473,25 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.cardBorder,
   },
   crestBadge: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 86,
+    height: 86,
+    borderRadius: 43,
     backgroundColor: '#FFFFFF',
     borderWidth: 2,
     borderColor: colors.cardBorderGold,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 4,
+    marginBottom: 8,
+    overflow: 'hidden',
     shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 3 },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
-    shadowRadius: 6,
-    elevation: 3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  brandLogoImage: {
+    width: '100%',
+    height: '100%',
   },
   crestEmoji: {
     fontSize: 20,
