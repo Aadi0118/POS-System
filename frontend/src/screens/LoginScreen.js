@@ -210,8 +210,8 @@ const LoginScreen = () => {
                   {serverHost?.includes('onrender.com')
                     ? 'Cloud Server 24/7 🟢'
                     : serverHost?.startsWith('http')
-                    ? 'Cloud Online 🟢'
-                    : `Host: ${serverHost || 'Detecting...'}:5000 ⚙️`}
+                      ? 'Cloud Online 🟢'
+                      : `Host: ${serverHost || 'Detecting...'}:5000 ⚙️`}
                 </Text>
               </TouchableOpacity>
             </View>
