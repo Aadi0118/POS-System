@@ -15,15 +15,26 @@ const getMenu = async (req, res, next) => {
     const { category, availableOnly } = req.query;
     const filter = {};
 
-    if (category) {
+    if (category && category !== 'All') {
       filter.category = category;
     }
 
     if (availableOnly === 'true') {
-      filter.isAvailable = true;
+      filter.isAvailable = { $ne: false };
     }
 
-    const items = await MenuItem.find(filter).sort({ category: 1, name: 1 }).lean();
+    const rawItems = await MenuItem.find(filter).sort({ name: 1 }).lean();
+
+    // Normalize items to guarantee name and price exist from any custom Atlas schema
+    const items = rawItems.map((item) => ({
+      ...item,
+      _id: item._id?.toString() || item.id,
+      name: item.name || item.itemName || item.title || 'Course',
+      price: Number(item.price ?? item.cost ?? item.rate ?? 0),
+      category: item.category || 'All',
+      isAvailable: item.isAvailable !== false,
+      description: item.description || '',
+    }));
 
     return res.status(200).json({
       success: true,

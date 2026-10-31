@@ -25,23 +25,12 @@ const menuItemSchema = new mongoose.Schema(
       type: String,
       required: [true, 'Menu item name is required'],
       trim: true,
-      unique: true,
       maxlength: [100, 'Name cannot exceed 100 characters'],
     },
     category: {
       type: String,
-      required: [true, 'Item category is required'],
-      enum: {
-        values: ALLOWED_CATEGORIES,
-        message: '{VALUE} is not a supported category',
-      },
-      validate: {
-        validator: function (v) {
-          // Explicit requirement: Exclude any tandoor categories
-          return !/tandoor|tandoori/i.test(v);
-        },
-        message: 'Tandoor categories are strictly prohibited in this kitchen configuration.',
-      },
+      default: 'All',
+      trim: true,
     },
     price: {
       type: Number,
@@ -62,6 +51,7 @@ const menuItemSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
+    strict: false,
   }
 );
 

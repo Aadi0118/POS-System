@@ -24,6 +24,7 @@ const connectDB = async () => {
     const conn = await mongoose.connect(mongoUri, options);
     console.log(`[Database] Connected Successfully: ${conn.connection.host}/${conn.connection.name}`);
     registerLifecycleHandlers();
+    await autoSeed();
     return conn;
   } catch (initialErr) {
     console.warn(`[Database Warning] Could not connect to external MongoDB: ${initialErr.message}`);
