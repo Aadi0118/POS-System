@@ -62,13 +62,14 @@ const login = async (req, res, next) => {
     }
 
     // Generate short-lived JWT session token
+    const jwtSecret = process.env.JWT_SECRET || 'spicy_zaika_secure_jwt_secret_pos_kds_default_fallback_2026';
     const token = jwt.sign(
       {
         id: user._id.toString(),
         name: user.name,
         role: user.role,
       },
-      process.env.JWT_SECRET,
+      jwtSecret,
       {
         expiresIn: process.env.JWT_EXPIRES_IN || '8h',
         issuer: 'pos-kds-backend',

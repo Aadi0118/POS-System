@@ -8,6 +8,8 @@ const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
+const DEFAULT_JWT_SECRET = 'spicy_zaika_secure_jwt_secret_pos_kds_default_fallback_2026';
+
 /**
  * Initializes and configures the Socket.io real-time server with security authentication.
  *
@@ -15,9 +17,13 @@ const User = require('../models/User');
  * @returns {Server}
  */
 const initSocketServer = (httpServer) => {
+  const allowedOrigin = (!process.env.CORS_ORIGIN || process.env.CORS_ORIGIN === '*')
+    ? '*'
+    : process.env.CORS_ORIGIN.split(',').map((o) => o.trim());
+
   const io = new Server(httpServer, {
     cors: {
-      origin: process.env.CORS_ORIGIN === '*' ? '*' : process.env.CORS_ORIGIN.split(','),
+      origin: allowedOrigin,
       methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'],
       credentials: true,
     },
@@ -36,7 +42,8 @@ const initSocketServer = (httpServer) => {
         return next(new Error('Authentication error: Missing session token.'));
       }
 
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const secret = process.env.JWT_SECRET || DEFAULT_JWT_SECRET;
+      const decoded = jwt.verify(token, secret);
       const user = await User.findById(decoded.id).select('_id name role isActive');
 
       if (!user || !user.isActive) {
