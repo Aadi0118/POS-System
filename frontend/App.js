@@ -5,10 +5,43 @@
  */
 
 import React from 'react';
-import { View, Text, ActivityIndicator, StyleSheet, StatusBar } from 'react-native';
+import { View, Text, ActivityIndicator, StyleSheet, StatusBar, Platform } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+
+// Inject mobile viewport and touch rules on web
+if (Platform.OS === 'web' && typeof document !== 'undefined') {
+  const style = document.createElement('style');
+  style.id = 'pos-mobile-viewport-fix';
+  style.textContent = `
+    html, body, #root {
+      width: 100%;
+      height: 100%;
+      min-height: 100%;
+      margin: 0;
+      padding: 0;
+      overflow-x: hidden;
+      -webkit-overflow-scrolling: touch;
+      touch-action: manipulation;
+    }
+    #root {
+      display: flex;
+      flex-direction: column;
+    }
+  `;
+  if (!document.getElementById('pos-mobile-viewport-fix')) {
+    document.head.appendChild(style);
+  }
+
+  let meta = document.querySelector('meta[name="viewport"]');
+  if (!meta) {
+    meta = document.createElement('meta');
+    meta.name = 'viewport';
+    document.head.appendChild(meta);
+  }
+  meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover';
+}
 
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import LoginScreen from './src/screens/LoginScreen';

@@ -16,10 +16,10 @@ export const LuxuryPatternBackground = ({ children }) => {
   return (
     <View style={styles.container}>
       {/* Ambient Champagne Gold Halos in corners */}
-      <View style={[styles.glowOrb, styles.glowOrbTopLeft]} />
-      <View style={[styles.glowOrb, styles.glowOrbTopRight]} />
-      <View style={[styles.glowOrb, styles.glowOrbBottomRight]} />
-      <View style={[styles.glowOrb, styles.glowOrbCenter]} />
+      <View pointerEvents="none" style={[styles.glowOrb, styles.glowOrbTopLeft]} />
+      <View pointerEvents="none" style={[styles.glowOrb, styles.glowOrbTopRight]} />
+      <View pointerEvents="none" style={[styles.glowOrb, styles.glowOrbBottomRight]} />
+      <View pointerEvents="none" style={[styles.glowOrb, styles.glowOrbCenter]} />
 
       {/* Subtle Geometric Diamond Watermark Grid */}
       <View style={styles.patternGrid} pointerEvents="none">
@@ -198,35 +198,34 @@ const styles = StyleSheet.create({
     position: 'absolute',
     borderRadius: 300,
     zIndex: 1,
-    pointerEvents: 'none',
   },
   glowOrbTopLeft: {
-    width: 280,
-    height: 280,
-    top: -80,
-    left: -80,
-    backgroundColor: 'rgba(217, 180, 110, 0.09)',
+    width: 180,
+    height: 180,
+    top: -40,
+    left: -40,
+    backgroundColor: 'rgba(217, 180, 110, 0.08)',
   },
   glowOrbTopRight: {
-    width: 320,
-    height: 320,
-    top: -100,
-    right: -100,
-    backgroundColor: 'rgba(197, 160, 89, 0.08)',
+    width: 200,
+    height: 200,
+    top: -50,
+    right: -50,
+    backgroundColor: 'rgba(197, 160, 89, 0.07)',
   },
   glowOrbBottomRight: {
-    width: 360,
-    height: 360,
-    bottom: -100,
-    right: -80,
-    backgroundColor: 'rgba(217, 180, 110, 0.07)',
+    width: 220,
+    height: 220,
+    bottom: -50,
+    right: -40,
+    backgroundColor: 'rgba(217, 180, 110, 0.06)',
   },
   glowOrbCenter: {
-    width: 400,
-    height: 400,
-    top: '40%',
-    left: '25%',
-    backgroundColor: 'rgba(245, 230, 200, 0.05)',
+    width: 220,
+    height: 220,
+    top: '35%',
+    left: '15%',
+    backgroundColor: 'rgba(245, 230, 200, 0.04)',
   },
   // Subtle Diamond Lattice Watermark
   patternGrid: {

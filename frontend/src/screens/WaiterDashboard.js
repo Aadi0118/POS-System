@@ -57,6 +57,7 @@ const WaiterDashboard = () => {
   const [selectedTable, setSelectedTable] = useState(null);
   const [activeOrder, setActiveOrder] = useState(null);
   const [orderModalVisible, setOrderModalVisible] = useState(false);
+  const [modalViewMode, setModalViewMode] = useState('catalog'); // 'catalog' | 'slip'
 
   // Cart for new or updated orders
   const [cart, setCart] = useState([]);
@@ -138,9 +139,11 @@ const WaiterDashboard = () => {
           notes: item.notes || '',
         }))
       );
+      setModalViewMode('slip');
     } else {
       setActiveOrder(null);
       setCart([]);
+      setModalViewMode('catalog');
     }
 
     setOrderModalVisible(true);
@@ -435,164 +438,234 @@ const WaiterDashboard = () => {
             </View>
           )}
 
+          {/* Modal Tab Switcher */}
+          <View style={styles.modalTabSwitcher}>
+            <TouchableOpacity
+              style={[
+                styles.modalTabBtn,
+                modalViewMode === 'catalog' && styles.modalTabBtnActive,
+              ]}
+              onPress={() => setModalViewMode('catalog')}
+              activeOpacity={0.8}
+            >
+              <Text
+                style={[
+                  styles.modalTabBtnText,
+                  modalViewMode === 'catalog' && styles.modalTabBtnTextActive,
+                ]}
+              >
+                🍲 Menu Catalog ({filteredMenuItems.length})
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.modalTabBtn,
+                modalViewMode === 'slip' && styles.modalTabBtnActive,
+              ]}
+              onPress={() => setModalViewMode('slip')}
+              activeOpacity={0.8}
+            >
+              <Text
+                style={[
+                  styles.modalTabBtnText,
+                  modalViewMode === 'slip' && styles.modalTabBtnTextActive,
+                ]}
+              >
+                📜 Dining Slip ({cart.length})
+              </Text>
+            </TouchableOpacity>
+          </View>
+
           <View style={styles.modalBody}>
-            {/* Catalog Section */}
-            <View style={styles.catalogSection}>
-              {/* Category Carousel */}
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catScroll}>
-                {categories.map((cat) => (
-                  <TouchableOpacity
-                    key={cat}
-                    style={[
-                      styles.catPill,
-                      selectedCategory === cat && styles.catPillActive,
-                    ]}
-                    onPress={() => setSelectedCategory(cat)}
-                    activeOpacity={0.75}
-                  >
-                    <Text style={styles.catIcon}>{CATEGORY_ICONS[cat] || '🍲'}</Text>
-                    <Text
+            {modalViewMode === 'catalog' ? (
+              /* Catalog Section */
+              <View style={styles.catalogSection}>
+                {/* Category Carousel */}
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catScroll}>
+                  {categories.map((cat) => (
+                    <TouchableOpacity
+                      key={cat}
                       style={[
-                        styles.catPillText,
-                        selectedCategory === cat && styles.catPillTextActive,
+                        styles.catPill,
+                        selectedCategory === cat && styles.catPillActive,
                       ]}
+                      onPress={() => setSelectedCategory(cat)}
+                      activeOpacity={0.75}
                     >
-                      {cat}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-
-              {/* Items List */}
-              <FlatList
-                data={filteredMenuItems}
-                keyExtractor={(item) => item._id}
-                showsVerticalScrollIndicator={false}
-                renderItem={({ item }) => (
-                  <View style={styles.menuItemCard}>
-                    <View style={styles.menuItemInfo}>
-                      <View style={styles.dishTitleRow}>
-                        <Text style={styles.dishCategoryTag}>{item.category}</Text>
-                        <Text style={styles.menuItemName}>{item.name}</Text>
-                      </View>
-                      {item.description ? (
-                        <Text style={styles.dishDescription} numberOfLines={2}>
-                          {item.description}
-                        </Text>
-                      ) : null}
-                      <Text style={styles.menuItemPrice}>₹{item.price}</Text>
-                    </View>
-                    <TouchableOpacity
-                      style={[styles.addBtn, isOrderLocked && styles.disabledBtn]}
-                      onPress={() => addToCart(item)}
-                      disabled={isOrderLocked}
-                      activeOpacity={0.8}
-                    >
-                      <Text style={styles.addBtnText}>+ Add Course</Text>
+                      <Text style={styles.catIcon}>{CATEGORY_ICONS[cat] || '🍲'}</Text>
+                      <Text
+                        style={[
+                          styles.catPillText,
+                          selectedCategory === cat && styles.catPillTextActive,
+                        ]}
+                      >
+                        {cat}
+                      </Text>
                     </TouchableOpacity>
-                  </View>
-                )}
-              />
-            </View>
+                  ))}
+                </ScrollView>
 
-            {/* Cart / Slip Section */}
-            <View style={styles.cartSection}>
-              {/* Brass Ticket Clip for Slip */}
-              <LuxuryTicketClip
-                label={`SALON TABLE ${selectedTable?.tableNumber || '?'} SLIP`}
-                color={colors.primary}
-              />
-
-              <View style={styles.cartTitleRow}>
-                <Text style={styles.cartTitle}>Dining Ticket Slip</Text>
-                <View style={styles.itemCountBadge}>
-                  <Text style={styles.itemCountText}>{cart.length} Courses</Text>
-                </View>
-              </View>
-
-              <ScrollView style={styles.cartScroll}>
-                {cart.length === 0 ? (
-                  <View style={styles.emptyCartBox}>
-                    <Text style={styles.emptyCartIcon}>📜</Text>
-                    <Text style={styles.emptyCartText}>No courses selected yet.</Text>
-                    <Text style={styles.emptyCartSub}>Select dishes from the menu catalog on the left.</Text>
-                  </View>
-                ) : (
-                  cart.map((item) => (
-                    <View key={item.menuItemId} style={styles.cartItemRow}>
-                      <View style={styles.cartItemLeft}>
-                        <Text style={styles.cartItemName}>{item.name}</Text>
-                        <Text style={styles.cartItemSub}>₹{item.price} × {item.quantity} = ₹{item.price * item.quantity}</Text>
-                        <TextInput
-                          style={styles.notesInput}
-                          placeholder="Special chef notes (e.g. less butter)..."
-                          placeholderTextColor={colors.textMuted}
-                          value={item.notes}
-                          onChangeText={(text) => updateItemNotes(item.menuItemId, text)}
-                          editable={!isOrderLocked}
-                        />
-                      </View>
-
-                      {!isOrderLocked && (
-                        <View style={styles.qtyControls}>
-                          <TouchableOpacity
-                            style={styles.qtyBtn}
-                            onPress={() => updateQuantity(item.menuItemId, -1)}
-                            activeOpacity={0.7}
-                          >
-                            <Text style={styles.qtyBtnText}>-</Text>
-                          </TouchableOpacity>
-                          <Text style={styles.qtyText}>{item.quantity}</Text>
-                          <TouchableOpacity
-                            style={styles.qtyBtn}
-                            onPress={() => updateQuantity(item.menuItemId, 1)}
-                            activeOpacity={0.7}
-                          >
-                            <Text style={styles.qtyBtnText}>+</Text>
-                          </TouchableOpacity>
+                {/* Items List */}
+                <FlatList
+                  data={filteredMenuItems}
+                  keyExtractor={(item) => item._id}
+                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={{ paddingBottom: cart.length > 0 ? 80 : 20 }}
+                  renderItem={({ item }) => (
+                    <View style={styles.menuItemCard}>
+                      <View style={styles.menuItemInfo}>
+                        <View style={styles.dishTitleRow}>
+                          <Text style={styles.dishCategoryTag}>{item.category}</Text>
+                          <Text style={styles.menuItemName}>{item.name}</Text>
                         </View>
-                      )}
+                        {item.description ? (
+                          <Text style={styles.dishDescription} numberOfLines={2}>
+                            {item.description}
+                          </Text>
+                        ) : null}
+                        <Text style={styles.menuItemPrice}>₹{item.price}</Text>
+                      </View>
+                      <TouchableOpacity
+                        style={[styles.addBtn, isOrderLocked && styles.disabledBtn]}
+                        onPress={() => addToCart(item)}
+                        disabled={isOrderLocked}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={styles.addBtnText}>+ Add Course</Text>
+                      </TouchableOpacity>
                     </View>
-                  ))
-                )}
-              </ScrollView>
+                  )}
+                />
 
-              {/* Summary & Checkout */}
-              <View style={styles.summaryBox}>
-                <View style={styles.totalRow}>
-                  <Text style={styles.totalLabel}>Grand Bill Total:</Text>
-                  <Text style={styles.totalAmountText}>₹{calculateTotal()}</Text>
+                {/* Floating Quick Slip Banner */}
+                {cart.length > 0 && (
+                  <TouchableOpacity
+                    style={styles.floatingSlipBar}
+                    onPress={() => setModalViewMode('slip')}
+                    activeOpacity={0.9}
+                  >
+                    <View style={styles.floatingSlipLeft}>
+                      <Text style={styles.floatingSlipCount}>
+                        🛒 {cart.reduce((a, b) => a + b.quantity, 0)} Courses
+                      </Text>
+                      <Text style={styles.floatingSlipTotal}>₹{calculateTotal()}</Text>
+                    </View>
+                    <Text style={styles.floatingSlipAction}>Review Slip & Send →</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            ) : (
+              /* Cart / Slip Section */
+              <View style={styles.cartSection}>
+                {/* Brass Ticket Clip for Slip */}
+                <LuxuryTicketClip
+                  label={`SALON TABLE ${selectedTable?.tableNumber || '?'} SLIP`}
+                  color={colors.primary}
+                />
+
+                <View style={styles.cartTitleRow}>
+                  <Text style={styles.cartTitle}>Dining Ticket Slip</Text>
+                  <TouchableOpacity
+                    style={styles.addMorePill}
+                    onPress={() => setModalViewMode('catalog')}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.addMorePillText}>+ Add Courses</Text>
+                  </TouchableOpacity>
                 </View>
 
-                <View style={styles.actionButtonsRow}>
-                  {!isOrderLocked && (
-                    <TouchableOpacity
-                      style={[styles.actionBtn, styles.dispatchBtn]}
-                      onPress={handleSendToKitchen}
-                      disabled={isSubmitting}
-                      activeOpacity={0.8}
-                    >
-                      {isSubmitting ? (
-                        <ActivityIndicator color="#FFF" size="small" />
-                      ) : (
-                        <Text style={styles.actionBtnText}>🚀 Dispatch to Kitchen</Text>
-                      )}
-                    </TouchableOpacity>
-                  )}
+                <ScrollView style={styles.cartScroll} showsVerticalScrollIndicator={false}>
+                  {cart.length === 0 ? (
+                    <View style={styles.emptyCartBox}>
+                      <Text style={styles.emptyCartIcon}>📜</Text>
+                      <Text style={styles.emptyCartText}>No courses selected yet.</Text>
+                      <Text style={styles.emptyCartSub}>Select dishes from the menu catalog.</Text>
+                      <TouchableOpacity
+                        style={styles.browseMenuBtn}
+                        onPress={() => setModalViewMode('catalog')}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={styles.browseMenuBtnText}>Browse Menu Catalog →</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    cart.map((item) => (
+                      <View key={item.menuItemId} style={styles.cartItemRow}>
+                        <View style={styles.cartItemLeft}>
+                          <Text style={styles.cartItemName}>{item.name}</Text>
+                          <Text style={styles.cartItemSub}>₹{item.price} × {item.quantity} = ₹{item.price * item.quantity}</Text>
+                          <TextInput
+                            style={styles.notesInput}
+                            placeholder="Special chef notes (e.g. less spicy)..."
+                            placeholderTextColor={colors.textMuted}
+                            value={item.notes}
+                            onChangeText={(text) => updateItemNotes(item.menuItemId, text)}
+                            editable={!isOrderLocked}
+                          />
+                        </View>
 
-                  {activeOrder && (
-                    <TouchableOpacity
-                      style={[styles.actionBtn, styles.payBtn]}
-                      onPress={handleProcessPayment}
-                      disabled={isSubmitting}
-                      activeOpacity={0.8}
-                    >
-                      <Text style={styles.actionBtnText}>💳 Settle Bill</Text>
-                    </TouchableOpacity>
+                        {!isOrderLocked && (
+                          <View style={styles.qtyControls}>
+                            <TouchableOpacity
+                              style={styles.qtyBtn}
+                              onPress={() => updateQuantity(item.menuItemId, -1)}
+                              activeOpacity={0.7}
+                            >
+                              <Text style={styles.qtyBtnText}>-</Text>
+                            </TouchableOpacity>
+                            <Text style={styles.qtyText}>{item.quantity}</Text>
+                            <TouchableOpacity
+                              style={styles.qtyBtn}
+                              onPress={() => updateQuantity(item.menuItemId, 1)}
+                              activeOpacity={0.7}
+                            >
+                              <Text style={styles.qtyBtnText}>+</Text>
+                            </TouchableOpacity>
+                          </View>
+                        )}
+                      </View>
+                    ))
                   )}
+                </ScrollView>
+
+                {/* Summary & Checkout */}
+                <View style={styles.summaryBox}>
+                  <View style={styles.totalRow}>
+                    <Text style={styles.totalLabel}>Grand Bill Total:</Text>
+                    <Text style={styles.totalAmountText}>₹{calculateTotal()}</Text>
+                  </View>
+
+                  <View style={styles.actionButtonsRow}>
+                    {!isOrderLocked && (
+                      <TouchableOpacity
+                        style={[styles.actionBtn, styles.dispatchBtn]}
+                        onPress={handleSendToKitchen}
+                        disabled={isSubmitting}
+                        activeOpacity={0.8}
+                      >
+                        {isSubmitting ? (
+                          <ActivityIndicator color="#FFF" size="small" />
+                        ) : (
+                          <Text style={styles.actionBtnText}>🚀 Dispatch to Kitchen</Text>
+                        )}
+                      </TouchableOpacity>
+                    )}
+
+                    {activeOrder && (
+                      <TouchableOpacity
+                        style={[styles.actionBtn, styles.payBtn]}
+                        onPress={handleProcessPayment}
+                        disabled={isSubmitting}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={styles.actionBtnText}>💳 Settle Bill</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
                 </View>
               </View>
-            </View>
+            )}
           </View>
         </View>
       </Modal>
@@ -650,8 +723,8 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   scrollContent: {
-    padding: 16,
-    paddingBottom: 40,
+    padding: 12,
+    paddingBottom: 70,
   },
   loaderCenter: {
     flex: 1,
@@ -706,13 +779,13 @@ const styles = StyleSheet.create({
   tableGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 14,
+    gap: 10,
     justifyContent: 'space-between',
   },
   tableCard: {
     width: '48%',
     backgroundColor: '#FFFFFF',
-    borderRadius: 18,
+    borderRadius: 16,
     borderWidth: 2,
     borderColor: colors.cardBorderStrong,
     shadowColor: colors.shadowColor,
@@ -727,7 +800,7 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   tableCardInner: {
-    padding: 16,
+    padding: 12,
   },
   tableAvailable: {
     borderColor: colors.availableBorder,
@@ -850,16 +923,41 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     textAlign: 'center',
   },
+  modalTabSwitcher: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1.5,
+    borderBottomColor: colors.cardBorder,
+  },
+  modalTabBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderBottomWidth: 2.5,
+    borderBottomColor: 'transparent',
+  },
+  modalTabBtnActive: {
+    borderBottomColor: colors.primary,
+    backgroundColor: colors.primaryLight,
+  },
+  modalTabBtnText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.textSecondary,
+  },
+  modalTabBtnTextActive: {
+    color: colors.primaryDark,
+    fontWeight: '900',
+  },
   modalBody: {
     flex: 1,
   },
   catalogSection: {
-    flex: 1.1,
-    paddingHorizontal: 16,
-    paddingTop: 14,
-    borderBottomWidth: 2,
-    borderBottomColor: colors.cardBorderStrong,
+    flex: 1,
+    paddingHorizontal: 14,
+    paddingTop: 12,
     backgroundColor: colors.bg,
+    position: 'relative',
   },
   catScroll: {
     flexGrow: 0,
@@ -958,6 +1056,70 @@ const styles = StyleSheet.create({
     color: colors.primaryDark,
     fontWeight: '900',
     fontSize: 12,
+  },
+
+  floatingSlipBar: {
+    position: 'absolute',
+    bottom: 14,
+    left: 14,
+    right: 14,
+    backgroundColor: colors.primary,
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    shadowColor: colors.primaryDark,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  floatingSlipLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  floatingSlipCount: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  floatingSlipTotal: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '900',
+  },
+  floatingSlipAction: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  addMorePill: {
+    backgroundColor: colors.primaryLight,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  addMorePillText: {
+    color: colors.primaryDark,
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  browseMenuBtn: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
+    marginTop: 12,
+  },
+  browseMenuBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '900',
   },
 
   cartSection: {

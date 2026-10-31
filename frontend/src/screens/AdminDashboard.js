@@ -348,27 +348,33 @@ const AdminDashboard = () => {
       )}
 
       {/* Luxury Navigation Tab Bar */}
-      <View style={styles.tabBar}>
-        {[
-          { key: 'analytics', label: '📊 Intelligence' },
-          { key: 'orders', label: `🧾 Tickets (${activeKitchenOrders.length})` },
-          { key: 'menu', label: '🍲 Catalog' },
-          { key: 'staff', label: '👥 Personnel' },
-          { key: 'tables', label: '🪑 Floor' },
-        ].map((tab) => (
-          <TouchableOpacity
-            key={tab.key}
-            style={[styles.tabItem, activeTab === tab.key && styles.tabItemActive]}
-            onPress={() => setActiveTab(tab.key)}
-            activeOpacity={0.75}
-          >
-            <Text
-              style={[styles.tabText, activeTab === tab.key && styles.tabTextActive]}
+      <View style={styles.tabBarWrapper}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.tabBarScroll}
+        >
+          {[
+            { key: 'analytics', label: '📊 Intelligence' },
+            { key: 'orders', label: `🧾 Tickets (${activeKitchenOrders.length})` },
+            { key: 'menu', label: '🍲 Catalog' },
+            { key: 'staff', label: '👥 Personnel' },
+            { key: 'tables', label: '🪑 Floor' },
+          ].map((tab) => (
+            <TouchableOpacity
+              key={tab.key}
+              style={[styles.tabItem, activeTab === tab.key && styles.tabItemActive]}
+              onPress={() => setActiveTab(tab.key)}
+              activeOpacity={0.75}
             >
-              {tab.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
+              <Text
+                style={[styles.tabText, activeTab === tab.key && styles.tabTextActive]}
+              >
+                {tab.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
       </View>
 
       <LuxuryPatternBackground>
@@ -1020,10 +1026,8 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     fontSize: 12,
   },
-  tabBar: {
-    flexDirection: 'row',
+  tabBarWrapper: {
     backgroundColor: '#FFFFFF',
-    paddingHorizontal: 8,
     borderBottomWidth: 1.5,
     borderBottomColor: colors.cardBorder,
     shadowColor: colors.shadowColor,
@@ -1033,9 +1037,13 @@ const styles = StyleSheet.create({
     elevation: 2,
     zIndex: 5,
   },
+  tabBarScroll: {
+    flexDirection: 'row',
+    paddingHorizontal: 6,
+  },
   tabItem: {
-    flex: 1,
-    paddingVertical: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     alignItems: 'center',
     borderBottomWidth: 2.5,
     borderBottomColor: 'transparent',
@@ -1054,7 +1062,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 16,
-    paddingBottom: 40,
+    paddingBottom: 70,
   },
   loaderCenter: {
     flex: 1,
@@ -1099,14 +1107,14 @@ const styles = StyleSheet.create({
   metricsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
+    gap: 10,
     justifyContent: 'space-between',
   },
   metricCard: {
     width: '48%',
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
-    padding: 16,
+    padding: 12,
     borderWidth: 2,
     borderColor: colors.cardBorderStrong,
     shadowColor: colors.shadowColor,
@@ -1127,9 +1135,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   metricWatermarkBadge: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     backgroundColor: colors.primaryLight,
     borderWidth: 1,
     borderColor: colors.primary,
@@ -1137,12 +1145,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   metricWatermarkIcon: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '900',
     color: colors.primaryDark,
   },
   metricValue: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: '900',
     color: colors.text,
     marginVertical: 4,

@@ -25,11 +25,15 @@ const Header = ({ title, subtitle }) => {
             <View style={styles.crestCircle}>
               <Text style={styles.crestEmoji}>👑</Text>
             </View>
-            <View>
-              <Text style={styles.title}>{title || 'Spicy Zaika'}</Text>
+            <View style={styles.titleTextContainer}>
+              <Text style={styles.title} numberOfLines={1} ellipsizeMode="tail">
+                {title || 'Spicy Zaika'}
+              </Text>
               <View style={styles.serviceRow}>
                 <Text style={styles.serviceSparkle}>✦</Text>
-                <Text style={styles.subtitle}>{subtitle || 'Haute Gastronomie'}</Text>
+                <Text style={styles.subtitle} numberOfLines={1} ellipsizeMode="tail">
+                  {subtitle || 'Haute Gastronomie'}
+                </Text>
                 <Text style={styles.serviceSparkle}>✦</Text>
               </View>
             </View>
@@ -44,7 +48,9 @@ const Header = ({ title, subtitle }) => {
                 <View style={styles.livePulseDot} />
               </View>
               <View style={styles.userInfo}>
-                <Text style={styles.userName}>{user.name}</Text>
+                <Text style={styles.userName} numberOfLines={1} ellipsizeMode="tail">
+                  {user.name}
+                </Text>
                 <View style={styles.rolePill}>
                   <Text style={styles.roleText}>{user.role}</Text>
                 </View>
@@ -65,11 +71,12 @@ const styles = StyleSheet.create({
   wrapper: {
     backgroundColor: '#FFFFFF',
     shadowColor: colors.shadowColor,
-    shadowOffset: { width: 0, height: 3 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06,
-    shadowRadius: 10,
-    elevation: 4,
+    shadowRadius: 8,
+    elevation: 3,
     zIndex: 10,
+    width: '100%',
   },
   topGoldRibbon: {
     height: 3,
@@ -79,23 +86,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     borderBottomWidth: 1.5,
     borderBottomColor: colors.cardBorder,
   },
   leftSection: {
     flex: 1,
+    minWidth: 0,
+    marginRight: 8,
   },
   titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 8,
   },
   crestCircle: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: colors.primaryLight,
     borderWidth: 1.5,
     borderColor: colors.cardBorderGold,
@@ -106,102 +115,101 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 4,
     elevation: 2,
+    flexShrink: 0,
   },
   crestEmoji: {
-    fontSize: 18,
+    fontSize: 14,
+  },
+  titleTextContainer: {
+    flex: 1,
+    minWidth: 0,
   },
   title: {
-    fontSize: 19,
+    fontSize: 15,
     fontWeight: '900',
     color: colors.text,
-    letterSpacing: 0.8,
+    letterSpacing: 0.4,
   },
   serviceRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    marginTop: 2,
+    gap: 3,
+    marginTop: 1,
   },
   serviceSparkle: {
     color: colors.primary,
-    fontSize: 8,
+    fontSize: 7,
   },
   subtitle: {
-    fontSize: 10,
+    fontSize: 9,
     color: colors.primaryDark,
     fontWeight: '800',
     textTransform: 'uppercase',
-    letterSpacing: 1,
+    letterSpacing: 0.8,
   },
   rightSection: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 6,
+    flexShrink: 0,
   },
   userBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    paddingVertical: 5,
-    paddingHorizontal: 12,
-    borderRadius: 22,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 18,
     borderWidth: 1.5,
     borderColor: colors.cardBorderGold,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 2,
+    maxWidth: 140,
   },
   livePulseContainer: {
-    marginRight: 8,
+    marginRight: 5,
   },
   livePulseDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
     backgroundColor: colors.available,
   },
   userInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 5,
+    flexShrink: 1,
   },
   userName: {
     color: colors.text,
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: '800',
+    maxWidth: 65,
   },
   rolePill: {
     backgroundColor: colors.primaryLight,
     borderWidth: 1,
     borderColor: colors.primary,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 5,
   },
   roleText: {
     color: colors.primaryDark,
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '900',
-    letterSpacing: 0.5,
+    letterSpacing: 0.4,
   },
   logoutBtn: {
     backgroundColor: '#FFFFFF',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 8,
     borderWidth: 1.5,
     borderColor: colors.cardBorder,
-    shadowColor: colors.shadowColor,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 1,
   },
   logoutText: {
     color: colors.textSecondary,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '800',
   },
 });
