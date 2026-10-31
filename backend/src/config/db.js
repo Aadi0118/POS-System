@@ -107,27 +107,30 @@ const autoSeed = async () => {
         });
       }
 
-      // Seed multi-cuisine menu (no tandoor)
-      const menuItems = [
-        { name: 'Dal Makhani', category: 'North Indian', price: 240, description: 'Creamy black lentils slow cooked overnight', isAvailable: true },
-        { name: 'Paneer Butter Masala', category: 'North Indian', price: 290, description: 'Cottage cheese in rich butter tomato gravy', isAvailable: true },
-        { name: 'Kashmiri Rogan Josh', category: 'North Indian', price: 390, description: 'Slow cooked tender lamb with Kashmiri spices', isAvailable: true },
-        { name: 'Chilli Paneer Dry', category: 'Indo-Chinese', price: 250, description: 'Crisp paneer with bell peppers and soy glaze', isAvailable: true },
-        { name: 'Veg Hakka Noodles', category: 'Indo-Chinese', price: 210, description: 'Wok tossed noodles with garden vegetables', isAvailable: true },
-        { name: 'Crispy Masala Dosa', category: 'South Indian', price: 160, description: 'Crepe with potato masala, sambar & coconut chutney', isAvailable: true },
-        { name: 'Steamed Idli Sambar (2 pcs)', category: 'South Indian', price: 110, description: 'Soft rice cakes with hot lentil sambar', isAvailable: true },
-        { name: 'Mumbai Pav Bhaji', category: 'Street Food', price: 180, description: 'Buttery mashed spiced vegetables with hot pav', isAvailable: true },
-        { name: 'Delhi Chaat Papdi', category: 'Street Food', price: 140, description: 'Crisp wafers topped with potato & tamarind chutney', isAvailable: true },
-        { name: 'Charcoal Grilled Paneer Skewers', category: 'Grills', price: 280, description: 'Flame grilled cottage cheese skewers (no tandoor)', isAvailable: true },
-        { name: 'Herb Grilled Chicken Breast', category: 'Grills', price: 360, description: 'Cast iron seared chicken with garlic herb jus', isAvailable: true },
-        { name: 'Hyderabadi Dum Chicken Biryani', category: 'Biryani', price: 350, description: 'Fragrant basmati rice layered with spiced chicken', isAvailable: true },
-        { name: 'Steamed Darjeeling Veg Momos', category: 'Momos', price: 160, description: 'Steamed vegetable dumplings with spicy dip', isAvailable: true },
-        { name: 'Juicy Chicken Momos (Steamed)', category: 'Momos', price: 210, description: 'Steamed minced chicken dumplings', isAvailable: true },
-        { name: 'Alphonso Mango Lassi', category: 'Beverages', price: 120, description: 'Sweet mango and chilled yogurt blend', isAvailable: true },
-        { name: 'Kullad Masala Chai', category: 'Beverages', price: 60, description: 'Clay cup cardamom and ginger tea', isAvailable: true },
-      ];
-      for (const m of menuItems) {
-        await MenuItem.create(m);
+      // Seed multi-cuisine menu only if collection is empty
+      const menuCount = await MenuItem.countDocuments();
+      if (menuCount === 0) {
+        const menuItems = [
+          { name: 'Dal Makhani', category: 'North Indian', price: 240, description: 'Creamy black lentils slow cooked overnight', isAvailable: true },
+          { name: 'Paneer Butter Masala', category: 'North Indian', price: 290, description: 'Cottage cheese in rich butter tomato gravy', isAvailable: true },
+          { name: 'Kashmiri Rogan Josh', category: 'North Indian', price: 390, description: 'Slow cooked tender lamb with Kashmiri spices', isAvailable: true },
+          { name: 'Chilli Paneer Dry', category: 'Indo-Chinese', price: 250, description: 'Crisp paneer with bell peppers and soy glaze', isAvailable: true },
+          { name: 'Veg Hakka Noodles', category: 'Indo-Chinese', price: 210, description: 'Wok tossed noodles with garden vegetables', isAvailable: true },
+          { name: 'Crispy Masala Dosa', category: 'South Indian', price: 160, description: 'Crepe with potato masala, sambar & coconut chutney', isAvailable: true },
+          { name: 'Steamed Idli Sambar (2 pcs)', category: 'South Indian', price: 110, description: 'Soft rice cakes with hot lentil sambar', isAvailable: true },
+          { name: 'Mumbai Pav Bhaji', category: 'Street Food', price: 180, description: 'Buttery mashed spiced vegetables with hot pav', isAvailable: true },
+          { name: 'Delhi Chaat Papdi', category: 'Street Food', price: 140, description: 'Crisp wafers topped with potato & tamarind chutney', isAvailable: true },
+          { name: 'Charcoal Grilled Paneer Skewers', category: 'Grills', price: 280, description: 'Flame grilled cottage cheese skewers (no tandoor)', isAvailable: true },
+          { name: 'Herb Grilled Chicken Breast', category: 'Grills', price: 360, description: 'Cast iron seared chicken with garlic herb jus', isAvailable: true },
+          { name: 'Hyderabadi Dum Chicken Biryani', category: 'Biryani', price: 350, description: 'Fragrant basmati rice layered with spiced chicken', isAvailable: true },
+          { name: 'Steamed Darjeeling Veg Momos', category: 'Momos', price: 160, description: 'Steamed vegetable dumplings with spicy dip', isAvailable: true },
+          { name: 'Juicy Chicken Momos (Steamed)', category: 'Momos', price: 210, description: 'Steamed minced chicken dumplings', isAvailable: true },
+          { name: 'Alphonso Mango Lassi', category: 'Beverages', price: 120, description: 'Sweet mango and chilled yogurt blend', isAvailable: true },
+          { name: 'Kullad Masala Chai', category: 'Beverages', price: 60, description: 'Clay cup cardamom and ginger tea', isAvailable: true },
+        ];
+        for (const m of menuItems) {
+          await MenuItem.create(m);
+        }
       }
 
       console.log('=======================================================');
