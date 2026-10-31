@@ -13,10 +13,11 @@ import { getSecureItem, saveSecureItem } from '../utils/secureStore';
 
 const SERVER_HOST_KEY = 'pos_kds_server_host';
 const DEFAULT_PORT = 5000;
-const FALLBACK_LAN_IP = '10.221.46.121'; // Current host machine LAN IP
+export const PERMANENT_CLOUD_URL = 'https://pos-system-1-efvl.onrender.com';
+const FALLBACK_LAN_IP = PERMANENT_CLOUD_URL;
 
 // In-memory cache of resolved host/URL
-let activeHost = null;
+let activeHost = PERMANENT_CLOUD_URL;
 
 /**
  * Normalizes any host or full URL into a complete base URL.
@@ -25,7 +26,7 @@ let activeHost = null;
  */
 export function normalizeServerBaseUrl(input) {
   if (!input || !input.trim()) {
-    return `http://${FALLBACK_LAN_IP}:${DEFAULT_PORT}`;
+    return PERMANENT_CLOUD_URL;
   }
 
   const trimmed = input.trim().replace(/\/+$/, '');
@@ -33,6 +34,11 @@ export function normalizeServerBaseUrl(input) {
   // 1. Full HTTPS / HTTP URL (Cloud deployments like Render, Railway, ngrok)
   if (trimmed.startsWith('https://') || trimmed.startsWith('http://')) {
     return trimmed;
+  }
+
+  // If input was saved as old local 10.x.x.x IP from past test sessions, automatically upgrade to permanent cloud
+  if (trimmed.startsWith('10.70.') || trimmed.startsWith('10.221.')) {
+    return PERMANENT_CLOUD_URL;
   }
 
   // 2. Host with explicit port specified (e.g. "192.168.1.50:5000")
@@ -46,54 +52,27 @@ export function normalizeServerBaseUrl(input) {
 
 /**
  * Auto-detects the host IP from Expo's Metro Bundler connection.
- * On physical Android devices running Expo Go, Constants.expoConfig?.hostUri
- * contains the computer's exact LAN IP (e.g. '10.18.123.121:8081').
+ * Default is permanent 24/7 cloud backend.
  */
 export function getAutoDetectedHost() {
-  try {
-    // 1. Expo SDK 52 expoConfig
-    const hostUri = Constants.expoConfig?.hostUri;
-    if (hostUri) {
-      const ip = hostUri.split(':')[0];
-      if (ip && ip !== 'localhost' && ip !== '127.0.0.1') {
-        return ip;
-      }
-    }
-
-    // 2. Legacy manifest debuggerHost
-    const debuggerHost = Constants.manifest2?.extra?.expoGo?.debuggerHost || Constants.manifest?.debuggerHost;
-    if (debuggerHost) {
-      const ip = debuggerHost.split(':')[0];
-      if (ip && ip !== 'localhost' && ip !== '127.0.0.1') {
-        return ip;
-      }
-    }
-  } catch (e) {
-    console.warn('[ServerConfig] Auto-detect failed:', e);
-  }
-
-  // 3. Web environment
-  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.hostname) {
-    return window.location.hostname;
-  }
-
-  // 4. Android physical device fallback to LAN IP
-  if (Platform.OS === 'android') {
-    return FALLBACK_LAN_IP;
-  }
-
-  return 'localhost';
+  return PERMANENT_CLOUD_URL;
 }
 
 /**
  * Initializes and resolves the active server host/URL.
  */
 export async function getResolvedHost() {
-  if (activeHost) return activeHost;
+  if (activeHost && activeHost === PERMANENT_CLOUD_URL) return activeHost;
 
   try {
     const saved = await getSecureItem(SERVER_HOST_KEY);
-    if (saved && saved.trim()) {
+    // Ignore stale local LAN IPs from previous test builds
+    if (
+      saved &&
+      saved.trim() &&
+      !saved.startsWith('10.70.') &&
+      !saved.startsWith('10.221.')
+    ) {
       activeHost = saved.trim();
       return activeHost;
     }
@@ -101,7 +80,7 @@ export async function getResolvedHost() {
     // Fall through
   }
 
-  activeHost = getAutoDetectedHost();
+  activeHost = PERMANENT_CLOUD_URL;
   return activeHost;
 }
 

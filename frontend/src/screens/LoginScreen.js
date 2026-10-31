@@ -202,7 +202,11 @@ const LoginScreen = () => {
               >
                 <View style={styles.serverPulseDot} />
                 <Text style={styles.serverStatusText} numberOfLines={1}>
-                  Host: {serverHost || 'Detecting...'}:5000 ⚙️
+                  {serverHost?.includes('onrender.com')
+                    ? 'Cloud Server 24/7 🟢'
+                    : serverHost?.startsWith('http')
+                    ? 'Cloud Online 🟢'
+                    : `Host: ${serverHost || 'Detecting...'}:5000 ⚙️`}
                 </Text>
               </TouchableOpacity>
             </View>
