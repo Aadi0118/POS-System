@@ -96,6 +96,7 @@ if (process.env.NODE_ENV !== 'test') {
 const healthHandler = (req, res) => {
   res.status(200).json({
     status: 'healthy',
+    version: '1.0.1',
     timestamp: new Date(),
     uptimeSeconds: process.uptime(),
   });

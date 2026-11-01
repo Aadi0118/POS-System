@@ -1,6 +1,6 @@
 {
   "name": "restaurant-pos-kds-backend",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Hardened, Real-Time POS & KDS Backend with RBAC and Socket.io",
   "main": "src/server.js",
   "scripts": {

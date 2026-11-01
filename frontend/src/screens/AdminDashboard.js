@@ -190,7 +190,8 @@ const AdminDashboard = () => {
   const fetchDashboardData = async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const [metricsRes, ordersRes, menuRes, staffRes, tablesRes, attendanceRes, payrollRes] = await Promise.all([
+      const [metricsRes, ordersRes, menuRes, staffRes, tablesRes, attendanceRes, payrollRes] =
+        await Promise.allSettled([
         apiClient.get('/admin/metrics'),
         apiClient.get('/orders'),
         apiClient.get('/menu'),
@@ -200,13 +201,19 @@ const AdminDashboard = () => {
         apiClient.get(`/salary/overview?month=${payrollMonthRef.current}`),
       ]);
 
-      if (metricsRes.data.success) setMetrics(metricsRes.data.data);
-      if (ordersRes.data.success) setOrders(ordersRes.data.data);
-      if (menuRes.data.success) setMenuItems(menuRes.data.data);
-      if (staffRes.data.success) setStaffList(staffRes.data.data);
-      if (tablesRes.data.success) setTables(tablesRes.data.data);
-      if (attendanceRes?.data?.success) setAttendanceData(attendanceRes.data.data);
-      if (payrollRes?.data?.success) setPayrollData(payrollRes.data.data);
+      if (metricsRes.status === 'fulfilled' && metricsRes.value?.data?.success) setMetrics(metricsRes.value.data.data);
+      if (ordersRes.status === 'fulfilled' && ordersRes.value?.data?.success) setOrders(ordersRes.value.data.data);
+      if (menuRes.status === 'fulfilled' && menuRes.value?.data?.success) setMenuItems(menuRes.value.data.data);
+      if (staffRes.status === 'fulfilled' && staffRes.value?.data?.success) setStaffList(staffRes.value.data.data);
+      if (tablesRes.status === 'fulfilled' && tablesRes.value?.data?.success) setTables(tablesRes.value.data.data);
+      if (attendanceRes?.status === 'fulfilled' && attendanceRes.value?.data?.success) setAttendanceData(attendanceRes.value.data.data);
+      if (payrollRes?.status === 'fulfilled' && payrollRes.value?.data?.success) setPayrollData(payrollRes.value.data.data);
+
+
+
+
+
+
     } catch (err) {
       console.error('[Admin Fetch Error]', err);
     } finally {
