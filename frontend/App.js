@@ -11,7 +11,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 // Inject mobile viewport and touch rules on web
-if (Platform.OS === 'web' && typeof document !== 'undefined') {
+if (typeof document !== 'undefined' && typeof window !== 'undefined') {
   const style = document.createElement('style');
   style.id = 'pos-mobile-viewport-fix';
   style.textContent = `

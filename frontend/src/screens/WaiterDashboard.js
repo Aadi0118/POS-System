@@ -20,6 +20,7 @@ import {
   StyleSheet,
   ActivityIndicator,
   FlatList,
+  Platform,
 } from 'react-native';
 import apiClient from '../api/client';
 import { getSocket } from '../api/socket';
