@@ -15,7 +15,10 @@ const orderItemInputSchema = z.object({
     required_error: 'Quantity is required',
   }).int().min(1, 'Quantity must be at least 1'),
   notes: z.string().trim().max(200).optional().default(''),
-}).strict();
+  round: z.number().int().optional(),
+  name: z.string().optional(),
+  price: z.number().optional(),
+});
 
 const createOrderSchema = z.object({
   body: z.object({
@@ -25,7 +28,7 @@ const createOrderSchema = z.object({
     items: z.array(orderItemInputSchema, {
       required_error: 'Items array is required',
     }).min(1, 'Order must contain at least 1 item'),
-  }).strict(),
+  }),
 });
 
 const updateOrderStatusSchema = z.object({
@@ -37,7 +40,7 @@ const updateOrderStatusSchema = z.object({
       required_error: 'Status is required',
     }),
     rejectionReason: z.string().trim().max(250).optional(),
-  }).strict(),
+  }),
 });
 
 const updateOrderItemsSchema = z.object({
@@ -46,12 +49,22 @@ const updateOrderItemsSchema = z.object({
   }),
   body: z.object({
     items: z.array(orderItemInputSchema).min(1, 'Order must contain at least 1 item'),
-  }).strict(),
+  }),
+});
+
+const appendOrderItemsSchema = z.object({
+  params: z.object({
+    id: z.string().regex(OBJECT_ID_REGEX, 'Invalid order ID'),
+  }),
+  body: z.object({
+    items: z.array(orderItemInputSchema).min(1, 'Order must contain at least 1 item to append'),
+  }),
 });
 
 module.exports = {
   createOrderSchema,
   updateOrderStatusSchema,
   updateOrderItemsSchema,
+  appendOrderItemsSchema,
 };
 

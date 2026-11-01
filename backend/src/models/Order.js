@@ -38,6 +38,15 @@ const orderItemSchema = new mongoose.Schema(
       trim: true,
       maxlength: [200, 'Notes cannot exceed 200 characters'],
     },
+    round: {
+      type: Number,
+      default: 1,
+    },
+    status: {
+      type: String,
+      enum: ['Pending', 'Accepted', 'Ready'],
+      default: 'Pending',
+    },
   },
   { _id: true }
 );

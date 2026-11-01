@@ -13,6 +13,7 @@ const {
   createOrderSchema,
   updateOrderStatusSchema,
   updateOrderItemsSchema,
+  appendOrderItemsSchema,
 } = require('../validators/order.validator');
 
 // All order endpoints require active session token
@@ -40,12 +41,20 @@ router.patch(
   orderController.updateOrderStatus
 );
 
-// Modify items (Waiter & Admin only): Disallowed if Cook has already accepted
+// Modify items (Waiter & Admin only)
 router.put(
   '/:id/items',
   requireRole(['Waiter', 'Admin']),
   validate(updateOrderItemsSchema),
   orderController.updateOrderItems
+);
+
+// Append new items/courses to active order (Waiter & Admin only): Works even if kitchen has already Accepted or Readied previous courses!
+router.post(
+  '/:id/items',
+  requireRole(['Waiter', 'Admin']),
+  validate(appendOrderItemsSchema),
+  orderController.appendOrderItems
 );
 
 // Payment Received / Checkout: Waiter & Admin only (Turns table Dirty)

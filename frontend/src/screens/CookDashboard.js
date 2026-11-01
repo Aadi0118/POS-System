@@ -83,11 +83,16 @@ const CookDashboard = () => {
       setOrders((prev) => prev.filter((o) => o._id !== completedOrder._id));
     });
 
+    socket.on('order:items_added', (payload) => {
+      fetchActiveOrders();
+    });
+
     return () => {
       socket.off('order:created');
       socket.off('order:updated');
       socket.off('order:status_updated');
       socket.off('order:completed');
+      socket.off('order:items_added');
     };
   };
 
@@ -224,25 +229,61 @@ const CookDashboard = () => {
                         </View>
                       </View>
 
+                      {/* Multi-Course Kitchen Notice Banner */}
+                      {order.items.some((i) => i.round > 1) && (
+                        <View style={styles.multiCourseBanner}>
+                          <Text style={styles.multiCourseBannerText}>
+                            ✦ ADDITIONAL COURSES ADDED TO TABLE ✦
+                          </Text>
+                        </View>
+                      )}
+
                       {/* Ticket Items List */}
                       <View style={styles.itemsList}>
-                        {order.items.map((item, index) => (
-                          <View key={`item-${index}`} style={styles.itemRow}>
-                            <View style={styles.itemQuantityBadge}>
-                              <Text style={styles.quantityNumber}>{item.quantity}×</Text>
-                            </View>
-                            <View style={styles.itemDetails}>
-                              <Text style={styles.itemName}>{item.name}</Text>
-                              {item.notes ? (
-                                <View style={styles.notesPill}>
-                                  <Text style={styles.itemNotes}>
-                                    👨‍🍳 Chef Instruction: "{item.notes}"
-                                  </Text>
+                        {order.items.map((item, index) => {
+                          const isAdditionalCourse = item.round && item.round > 1;
+                          return (
+                            <View key={`item-${index}`} style={styles.itemRow}>
+                              <View
+                                style={[
+                                  styles.itemQuantityBadge,
+                                  isAdditionalCourse && styles.itemQuantityBadgeNew,
+                                ]}
+                              >
+                                <Text
+                                  style={[
+                                    styles.quantityNumber,
+                                    isAdditionalCourse && styles.quantityNumberNew,
+                                  ]}
+                                >
+                                  {item.quantity}×
+                                </Text>
+                              </View>
+                              <View style={styles.itemDetails}>
+                                <View style={styles.itemNameRow}>
+                                  <Text style={styles.itemName}>{item.name}</Text>
+                                  {isAdditionalCourse ? (
+                                    <View style={styles.roundBadge}>
+                                      <Text style={styles.roundBadgeText}>ROUND {item.round}</Text>
+                                    </View>
+                                  ) : null}
+                                  {item.status === 'Ready' ? (
+                                    <View style={styles.itemReadyBadge}>
+                                      <Text style={styles.itemReadyBadgeText}>✓ Done</Text>
+                                    </View>
+                                  ) : null}
                                 </View>
-                              ) : null}
+                                {item.notes ? (
+                                  <View style={styles.notesPill}>
+                                    <Text style={styles.itemNotes}>
+                                      👨‍🍳 Chef Instruction: "{item.notes}"
+                                    </Text>
+                                  </View>
+                                ) : null}
+                              </View>
                             </View>
-                          </View>
-                        ))}
+                          );
+                        })}
                       </View>
 
                       {/* KDS Action Controls */}
@@ -447,6 +488,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '800',
   },
+  multiCourseBanner: {
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1.5,
+    borderColor: '#F59E0B',
+    borderRadius: 8,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    marginTop: 8,
+    alignItems: 'center',
+  },
+  multiCourseBannerText: {
+    color: '#92400E',
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
   itemsList: {
     paddingVertical: 14,
     gap: 12,
@@ -466,17 +523,58 @@ const styles = StyleSheet.create({
     minWidth: 36,
     alignItems: 'center',
   },
+  itemQuantityBadgeNew: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#F59E0B',
+  },
   quantityNumber: {
     color: colors.primaryDark,
     fontSize: 14,
     fontWeight: '900',
   },
+  quantityNumberNew: {
+    color: '#B45309',
+  },
   itemDetails: {
     flex: 1,
+  },
+  itemNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
   },
   itemName: {
     color: colors.text,
     fontSize: 16,
+    fontWeight: '800',
+  },
+  roundBadge: {
+    backgroundColor: '#FDE68A',
+    borderWidth: 1,
+    borderColor: '#D97706',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  roundBadgeText: {
+    color: '#78350F',
+    fontSize: 10,
+    fontWeight: '900',
+  },
+  itemReadyBadge: {
+    backgroundColor: colors.availableBg,
+    borderWidth: 1,
+    borderColor: colors.availableBorder,
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  itemReadyBadgeText: {
+    color: colors.available,
+    fontSize: 10,
+    fontWeight: '900',
+  },
     fontWeight: '800',
   },
   notesPill: {

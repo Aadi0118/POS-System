@@ -60,8 +60,10 @@ const WaiterDashboard = () => {
   const [orderModalVisible, setOrderModalVisible] = useState(false);
   const [modalViewMode, setModalViewMode] = useState('catalog'); // 'catalog' | 'slip'
 
-  // Cart for new or updated orders
-  const [cart, setCart] = useState([]);
+  // Items already ordered and dispatched to kitchen
+  const [existingItems, setExistingItems] = useState([]);
+  // New courses being added by waiter during this session
+  const [newItems, setNewItems] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -103,6 +105,24 @@ const WaiterDashboard = () => {
 
     socket.on('order:status_updated', (updatedOrder) => {
       setActiveOrder((prev) => (prev && prev._id === updatedOrder._id ? updatedOrder : prev));
+      if (selectedTable && selectedTable.currentOrderId?._id === updatedOrder._id) {
+        setExistingItems(updatedOrder.items || []);
+      }
+      setTables((prev) =>
+        prev.map((t) => {
+          if (t.currentOrderId && t.currentOrderId._id === updatedOrder._id) {
+            return { ...t, currentOrderId: updatedOrder };
+          }
+          return t;
+        })
+      );
+    });
+
+    socket.on('order:updated', (updatedOrder) => {
+      setActiveOrder((prev) => (prev && prev._id === updatedOrder._id ? updatedOrder : prev));
+      if (selectedTable && selectedTable.currentOrderId?._id === updatedOrder._id) {
+        setExistingItems(updatedOrder.items || []);
+      }
       setTables((prev) =>
         prev.map((t) => {
           if (t.currentOrderId && t.currentOrderId._id === updatedOrder._id) {
@@ -116,6 +136,7 @@ const WaiterDashboard = () => {
     return () => {
       socket.off('table:status_updated');
       socket.off('order:status_updated');
+      socket.off('order:updated');
     };
   };
 
@@ -132,19 +153,13 @@ const WaiterDashboard = () => {
 
     if (table.status === 'Occupied' && table.currentOrderId) {
       setActiveOrder(table.currentOrderId);
-      setCart(
-        table.currentOrderId.items.map((item) => ({
-          menuItemId: item.menuItemId._id || item.menuItemId,
-          name: item.name,
-          price: item.price,
-          quantity: item.quantity,
-          notes: item.notes || '',
-        }))
-      );
+      setExistingItems(table.currentOrderId.items || []);
+      setNewItems([]);
       setModalViewMode('slip');
     } else {
       setActiveOrder(null);
-      setCart([]);
+      setExistingItems([]);
+      setNewItems([]);
       setModalViewMode('catalog');
     }
 
@@ -152,15 +167,7 @@ const WaiterDashboard = () => {
   };
 
   const addToCart = (menuItem) => {
-    if (activeOrder && activeOrder.status !== 'Pending') {
-      Alert.alert(
-        'Kitchen In Preparation',
-        `The kitchen has already ${activeOrder.status.toLowerCase()} this order. Additional items must be placed on a new ticket.`
-      );
-      return;
-    }
-
-    setCart((prev) => {
+    setNewItems((prev) => {
       const existing = prev.find((i) => i.menuItemId === menuItem._id);
       if (existing) {
         return prev.map((i) =>
@@ -180,13 +187,8 @@ const WaiterDashboard = () => {
     });
   };
 
-  const updateQuantity = (menuItemId, delta) => {
-    if (activeOrder && activeOrder.status !== 'Pending') {
-      Alert.alert('Action Prohibited', 'Cannot modify items once the kitchen has accepted the ticket.');
-      return;
-    }
-
-    setCart((prev) =>
+  const updateNewItemQuantity = (menuItemId, delta) => {
+    setNewItems((prev) =>
       prev
         .map((i) => {
           if (i.menuItemId === menuItemId) {
@@ -199,19 +201,30 @@ const WaiterDashboard = () => {
     );
   };
 
-  const updateItemNotes = (menuItemId, notes) => {
-    if (activeOrder && activeOrder.status !== 'Pending') return;
-    setCart((prev) =>
+  const removeNewItem = (menuItemId) => {
+    setNewItems((prev) => prev.filter((i) => i.menuItemId !== menuItemId));
+  };
+
+  const updateNewItemNotes = (menuItemId, notes) => {
+    setNewItems((prev) =>
       prev.map((i) => (i.menuItemId === menuItemId ? { ...i, notes } : i))
     );
   };
 
-  const calculateTotal = () => {
-    return cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const calculateExistingTotal = () => {
+    return existingItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
   };
 
+  const calculateNewTotal = () => {
+    return newItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  };
+
+  const existingTotal = calculateExistingTotal();
+  const newTotal = calculateNewTotal();
+  const grandTotal = existingTotal + newTotal;
+
   const handleSendToKitchen = async () => {
-    if (cart.length === 0) {
+    if (newItems.length === 0) {
       Alert.alert('Empty Ticket', 'Please select at least one course before sending to the kitchen.');
       return;
     }
@@ -219,25 +232,30 @@ const WaiterDashboard = () => {
     setIsSubmitting(true);
     try {
       if (activeOrder) {
-        const res = await apiClient.put(`/orders/${activeOrder._id}/items`, {
-          items: cart.map((i) => ({
+        // Appending new courses to an active dining table
+        const res = await apiClient.post(`/orders/${activeOrder._id}/items`, {
+          items: newItems.map((i) => ({
             menuItemId: i.menuItemId,
             quantity: i.quantity,
-            notes: i.notes,
+            notes: i.notes || '',
           })),
         });
         if (res.data.success) {
-          Alert.alert('Ticket Updated', 'Course modifications dispatched to kitchen!');
+          Alert.alert(
+            '✦ Courses Dispatched',
+            `Additional courses have been sent to the kitchen for Table ${selectedTable?.tableNumber}.`
+          );
           setOrderModalVisible(false);
           fetchInitialData();
         }
       } else {
+        // Initial order for a newly seated table
         const res = await apiClient.post('/orders', {
           tableId: selectedTable._id,
-          items: cart.map((i) => ({
+          items: newItems.map((i) => ({
             menuItemId: i.menuItemId,
             quantity: i.quantity,
-            notes: i.notes,
+            notes: i.notes || '',
           })),
         });
         if (res.data.success) {
@@ -255,6 +273,21 @@ const WaiterDashboard = () => {
 
   const handleProcessPayment = async () => {
     if (!activeOrder) return;
+
+    if (newItems.length > 0) {
+      Alert.alert(
+        'Unsent Courses in Slip',
+        'You have added new courses that have not been dispatched to the kitchen. Please send them to the kitchen first, or remove them before settling the bill.',
+        [
+          { text: 'Review Slip', style: 'cancel' },
+          {
+            text: 'Send to Kitchen First',
+            onPress: handleSendToKitchen,
+          },
+        ]
+      );
+      return;
+    }
 
     Alert.alert(
       'Settle Dining Bill',
@@ -298,7 +331,6 @@ const WaiterDashboard = () => {
     return selectedCategory === 'All' || item.category === selectedCategory;
   });
 
-  const isOrderLocked = activeOrder && activeOrder.status !== 'Pending';
   const occupiedCount = tables.filter((t) => t.status === 'Occupied').length;
 
   return (
@@ -437,11 +469,13 @@ const WaiterDashboard = () => {
             </TouchableOpacity>
           </View>
 
-          {/* Kitchen Locked Banner */}
-          {isOrderLocked && (
-            <View style={styles.lockedBanner}>
-              <Text style={styles.lockedBannerText}>
-                🔒 Kitchen Status: '{activeOrder.status}'. Courses are currently in chef preparation.
+          {/* Kitchen Status Banner */}
+          {activeOrder && (
+            <View style={styles.statusBanner}>
+              <Text style={styles.statusBannerText}>
+                {activeOrder.status === 'Pending' && '⏳ Ticket dispatched — Awaiting chef acceptance'}
+                {activeOrder.status === 'Accepted' && '👨‍🍳 Kitchen preparing courses • Add extra courses anytime!'}
+                {activeOrder.status === 'Ready' && '🍽️ Food is ready/served • Add extra courses or settle bill'}
               </Text>
             </View>
           )}
@@ -480,7 +514,7 @@ const WaiterDashboard = () => {
                   modalViewMode === 'slip' && styles.modalTabBtnTextActive,
                 ]}
               >
-                📜 Dining Slip ({cart.length})
+                📜 Dining Slip ({existingItems.length + newItems.length}{newItems.length > 0 ? ` • ${newItems.length} new` : ''})
               </Text>
             </TouchableOpacity>
           </View>
@@ -570,7 +604,7 @@ const WaiterDashboard = () => {
                   keyExtractor={(item) => item._id}
                   showsVerticalScrollIndicator={false}
                   keyboardShouldPersistTaps="handled"
-                  contentContainerStyle={{ paddingBottom: cart.length > 0 ? 80 : 20 }}
+                  contentContainerStyle={{ paddingBottom: (newItems.length > 0 || existingItems.length > 0) ? 80 : 20 }}
                   ListEmptyComponent={
                     <View style={styles.emptySearchContainer}>
                       <Text style={styles.emptySearchEmoji}>🔍🍲</Text>
@@ -594,46 +628,63 @@ const WaiterDashboard = () => {
                       ) : null}
                     </View>
                   }
-                  renderItem={({ item }) => (
-                    <View style={styles.menuItemCard}>
-                      <View style={styles.menuItemInfo}>
-                        <View style={styles.dishTitleRow}>
-                          <Text style={styles.dishCategoryTag}>{item.category}</Text>
-                          <Text style={styles.menuItemName}>{item.name}</Text>
+                  renderItem={({ item }) => {
+                    const inNewCart = newItems.find((i) => i.menuItemId === item._id);
+                    return (
+                      <View style={styles.menuItemCard}>
+                        <View style={styles.menuItemInfo}>
+                          <View style={styles.dishTitleRow}>
+                            <Text style={styles.dishCategoryTag}>{item.category}</Text>
+                            <Text style={styles.menuItemName}>{item.name}</Text>
+                          </View>
+                          {item.description ? (
+                            <Text style={styles.dishDescription} numberOfLines={2}>
+                              {item.description}
+                            </Text>
+                          ) : null}
+                          <Text style={styles.menuItemPrice}>₹{item.price}</Text>
                         </View>
-                        {item.description ? (
-                          <Text style={styles.dishDescription} numberOfLines={2}>
-                            {item.description}
+                        <TouchableOpacity
+                          style={[styles.addBtn, inNewCart && styles.addBtnInCart]}
+                          onPress={() => addToCart(item)}
+                          activeOpacity={0.8}
+                        >
+                          <Text style={[styles.addBtnText, inNewCart && styles.addBtnTextInCart]}>
+                            + Add Course{inNewCart ? ` (${inNewCart.quantity})` : ''}
                           </Text>
-                        ) : null}
-                        <Text style={styles.menuItemPrice}>₹{item.price}</Text>
+                        </TouchableOpacity>
                       </View>
-                      <TouchableOpacity
-                        style={[styles.addBtn, isOrderLocked && styles.disabledBtn]}
-                        onPress={() => addToCart(item)}
-                        disabled={isOrderLocked}
-                        activeOpacity={0.8}
-                      >
-                        <Text style={styles.addBtnText}>+ Add Course</Text>
-                      </TouchableOpacity>
-                    </View>
-                  )}
+                    );
+                  }}
                 />
 
                 {/* Floating Quick Slip Banner */}
-                {cart.length > 0 && (
+                {(newItems.length > 0 || existingItems.length > 0) && (
                   <TouchableOpacity
                     style={styles.floatingSlipBar}
                     onPress={() => setModalViewMode('slip')}
                     activeOpacity={0.9}
                   >
                     <View style={styles.floatingSlipLeft}>
-                      <Text style={styles.floatingSlipCount}>
-                        🛒 {cart.reduce((a, b) => a + b.quantity, 0)} Courses
-                      </Text>
-                      <Text style={styles.floatingSlipTotal}>₹{calculateTotal()}</Text>
+                      {newItems.length > 0 ? (
+                        <>
+                          <Text style={styles.floatingSlipCount}>
+                            🛒 {newItems.reduce((a, b) => a + b.quantity, 0)} New Course{newItems.reduce((a, b) => a + b.quantity, 0) !== 1 ? 's' : ''}
+                          </Text>
+                          <Text style={styles.floatingSlipTotal}>+₹{newTotal}</Text>
+                        </>
+                      ) : (
+                        <>
+                          <Text style={styles.floatingSlipCount}>
+                            📜 Table #{selectedTable?.tableNumber} Active Bill
+                          </Text>
+                          <Text style={styles.floatingSlipTotal}>₹{existingTotal}</Text>
+                        </>
+                      )}
                     </View>
-                    <Text style={styles.floatingSlipAction}>Review Slip & Send →</Text>
+                    <Text style={styles.floatingSlipAction}>
+                      {newItems.length > 0 ? 'Review & Dispatch →' : 'View Slip →'}
+                    </Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -653,16 +704,17 @@ const WaiterDashboard = () => {
                     onPress={() => setModalViewMode('catalog')}
                     activeOpacity={0.8}
                   >
-                    <Text style={styles.addMorePillText}>+ Add Courses</Text>
+                    <Text style={styles.addMorePillText}>+ Add More Dishes</Text>
                   </TouchableOpacity>
                 </View>
 
                 <ScrollView style={styles.cartScroll} showsVerticalScrollIndicator={false}>
-                  {cart.length === 0 ? (
+                  {/* Empty state if both existing and new are empty */}
+                  {existingItems.length === 0 && newItems.length === 0 ? (
                     <View style={styles.emptyCartBox}>
                       <Text style={styles.emptyCartIcon}>📜</Text>
                       <Text style={styles.emptyCartText}>No courses selected yet.</Text>
-                      <Text style={styles.emptyCartSub}>Select dishes from the menu catalog.</Text>
+                      <Text style={styles.emptyCartSub}>Select dishes from the menu catalog to seat this table.</Text>
                       <TouchableOpacity
                         style={styles.browseMenuBtn}
                         onPress={() => setModalViewMode('catalog')}
@@ -672,54 +724,162 @@ const WaiterDashboard = () => {
                       </TouchableOpacity>
                     </View>
                   ) : (
-                    cart.map((item) => (
-                      <View key={item.menuItemId} style={styles.cartItemRow}>
-                        <View style={styles.cartItemLeft}>
-                          <Text style={styles.cartItemName}>{item.name}</Text>
-                          <Text style={styles.cartItemSub}>₹{item.price} × {item.quantity} = ₹{item.price * item.quantity}</Text>
-                          <TextInput
-                            style={styles.notesInput}
-                            placeholder="Special chef notes (e.g. less spicy)..."
-                            placeholderTextColor={colors.textMuted}
-                            value={item.notes}
-                            onChangeText={(text) => updateItemNotes(item.menuItemId, text)}
-                            editable={!isOrderLocked}
-                          />
+                    <>
+                      {/* Section 1: Already Ordered / Dispatched Courses */}
+                      {existingItems.length > 0 && (
+                        <View style={styles.slipSectionBlock}>
+                          <View style={styles.slipSectionHeader}>
+                            <Text style={styles.slipSectionTitle}>
+                              ✓ ALREADY DISPATCHED COURSES ({existingItems.length})
+                            </Text>
+                            <Text style={styles.slipSectionSubtotal}>
+                              Subtotal: ₹{existingTotal}
+                            </Text>
+                          </View>
+                          {existingItems.map((item, idx) => (
+                            <View key={`existing-${item._id || item.menuItemId}-${idx}`} style={styles.dispatchedItemRow}>
+                              <View style={styles.dispatchedItemLeft}>
+                                <View style={styles.dispatchedItemTitleRow}>
+                                  <Text style={styles.dispatchedItemName}>{item.name}</Text>
+                                  {activeOrder?.status === 'Ready' ? (
+                                    <View style={styles.statusPillReady}>
+                                      <Text style={styles.statusPillReadyText}>🍽️ Ready</Text>
+                                    </View>
+                                  ) : (
+                                    <View style={styles.statusPillCooking}>
+                                      <Text style={styles.statusPillCookingText}>👨‍🍳 Cooking</Text>
+                                    </View>
+                                  )}
+                                </View>
+                                <Text style={styles.dispatchedItemSub}>
+                                  ₹{item.price} × {item.quantity} = ₹{item.price * item.quantity}
+                                </Text>
+                                {item.notes ? (
+                                  <Text style={styles.dispatchedItemNotes}>
+                                    Note: "{item.notes}"
+                                  </Text>
+                                ) : null}
+                              </View>
+                              <View style={styles.dispatchedLockBadge}>
+                                <Text style={styles.dispatchedLockBadgeText}>
+                                  {item.quantity}× Sent
+                                </Text>
+                              </View>
+                            </View>
+                          ))}
+                        </View>
+                      )}
+
+                      {/* Section 2: Additional Courses to Dispatch */}
+                      <View style={styles.slipSectionBlock}>
+                        <View style={styles.slipSectionHeader}>
+                          <Text style={[styles.slipSectionTitle, { color: colors.goldDark }]}>
+                            ✦ ADDITIONAL COURSES TO DISPATCH ({newItems.length})
+                          </Text>
+                          {newItems.length > 0 && (
+                            <Text style={[styles.slipSectionSubtotal, { color: colors.goldDark }]}>
+                              +₹{newTotal}
+                            </Text>
+                          )}
                         </View>
 
-                        {!isOrderLocked && (
-                          <View style={styles.qtyControls}>
+                        {newItems.length === 0 ? (
+                          <View style={styles.addCoursesPromptBox}>
+                            <Text style={styles.addCoursesPromptIcon}>🍲</Text>
+                            <Text style={styles.addCoursesPromptTitle}>Want to add more dishes?</Text>
+                            <Text style={styles.addCoursesPromptSub}>
+                              Add extra breads, starters, drinks, or desserts anytime while guests are dining.
+                            </Text>
                             <TouchableOpacity
-                              style={styles.qtyBtn}
-                              onPress={() => updateQuantity(item.menuItemId, -1)}
-                              activeOpacity={0.7}
+                              style={styles.addCoursesPromptBtn}
+                              onPress={() => setModalViewMode('catalog')}
+                              activeOpacity={0.8}
                             >
-                              <Text style={styles.qtyBtnText}>-</Text>
-                            </TouchableOpacity>
-                            <Text style={styles.qtyText}>{item.quantity}</Text>
-                            <TouchableOpacity
-                              style={styles.qtyBtn}
-                              onPress={() => updateQuantity(item.menuItemId, 1)}
-                              activeOpacity={0.7}
-                            >
-                              <Text style={styles.qtyBtnText}>+</Text>
+                              <Text style={styles.addCoursesPromptBtnText}>
+                                + Browse Menu to Add More Items
+                              </Text>
                             </TouchableOpacity>
                           </View>
+                        ) : (
+                          newItems.map((item) => (
+                            <View key={`new-${item.menuItemId}`} style={styles.cartItemRow}>
+                              <View style={styles.cartItemLeft}>
+                                <View style={styles.newItemTitleRow}>
+                                  <Text style={styles.cartItemName}>{item.name}</Text>
+                                  <View style={styles.newItemBadge}>
+                                    <Text style={styles.newItemBadgeText}>✦ NEW</Text>
+                                  </View>
+                                </View>
+                                <Text style={styles.cartItemSub}>
+                                  ₹{item.price} × {item.quantity} = ₹{item.price * item.quantity}
+                                </Text>
+                                <TextInput
+                                  style={styles.notesInput}
+                                  placeholder="Chef instruction for this item (e.g. less spicy)..."
+                                  placeholderTextColor={colors.textMuted}
+                                  value={item.notes}
+                                  onChangeText={(text) => updateNewItemNotes(item.menuItemId, text)}
+                                />
+                              </View>
+
+                              <View style={styles.qtyControls}>
+                                <TouchableOpacity
+                                  style={styles.qtyBtn}
+                                  onPress={() => updateNewItemQuantity(item.menuItemId, -1)}
+                                  activeOpacity={0.7}
+                                >
+                                  <Text style={styles.qtyBtnText}>-</Text>
+                                </TouchableOpacity>
+                                <Text style={styles.qtyText}>{item.quantity}</Text>
+                                <TouchableOpacity
+                                  style={styles.qtyBtn}
+                                  onPress={() => updateNewItemQuantity(item.menuItemId, 1)}
+                                  activeOpacity={0.7}
+                                >
+                                  <Text style={styles.qtyBtnText}>+</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  style={styles.deleteItemBtn}
+                                  onPress={() => removeNewItem(item.menuItemId)}
+                                  activeOpacity={0.7}
+                                >
+                                  <Text style={styles.deleteItemBtnText}>✕</Text>
+                                </TouchableOpacity>
+                              </View>
+                            </View>
+                          ))
                         )}
                       </View>
-                    ))
+                    </>
                   )}
                 </ScrollView>
 
                 {/* Summary & Checkout */}
                 <View style={styles.summaryBox}>
+                  {existingItems.length > 0 && newItems.length > 0 ? (
+                    <View style={styles.subtotalBreakdown}>
+                      <View style={styles.breakdownRow}>
+                        <Text style={styles.breakdownLabel}>Dispatched Courses:</Text>
+                        <Text style={styles.breakdownValue}>₹{existingTotal}</Text>
+                      </View>
+                      <View style={styles.breakdownRow}>
+                        <Text style={[styles.breakdownLabel, { color: colors.goldDark }]}>
+                          + Additional Courses:
+                        </Text>
+                        <Text style={[styles.breakdownValue, { color: colors.goldDark }]}>
+                          +₹{newTotal}
+                        </Text>
+                      </View>
+                    </View>
+                  ) : null}
+
                   <View style={styles.totalRow}>
                     <Text style={styles.totalLabel}>Grand Bill Total:</Text>
-                    <Text style={styles.totalAmountText}>₹{calculateTotal()}</Text>
+                    <Text style={styles.totalAmountText}>₹{grandTotal}</Text>
                   </View>
 
                   <View style={styles.actionButtonsRow}>
-                    {!isOrderLocked && (
+                    {newItems.length > 0 && (
                       <TouchableOpacity
                         style={[styles.actionBtn, styles.dispatchBtn]}
                         onPress={handleSendToKitchen}
@@ -729,7 +889,11 @@ const WaiterDashboard = () => {
                         {isSubmitting ? (
                           <ActivityIndicator color="#FFF" size="small" />
                         ) : (
-                          <Text style={styles.actionBtnText}>🚀 Dispatch to Kitchen</Text>
+                          <Text style={styles.actionBtnText}>
+                            {activeOrder
+                              ? `🚀 Send New Courses (+₹${newTotal})`
+                              : `🚀 Dispatch to Kitchen (₹${newTotal})`}
+                          </Text>
                         )}
                       </TouchableOpacity>
                     )}
@@ -741,7 +905,9 @@ const WaiterDashboard = () => {
                         disabled={isSubmitting}
                         activeOpacity={0.8}
                       >
-                        <Text style={styles.actionBtnText}>💳 Settle Bill</Text>
+                        <Text style={styles.actionBtnText}>
+                          💳 Settle Bill (₹{existingTotal})
+                        </Text>
                       </TouchableOpacity>
                     )}
                   </View>
@@ -992,6 +1158,19 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontWeight: '800',
     fontSize: 12,
+  },
+  statusBanner: {
+    backgroundColor: '#FEF3C7',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1.5,
+    borderBottomColor: '#F59E0B',
+  },
+  statusBannerText: {
+    color: '#92400E',
+    fontSize: 12,
+    fontWeight: '800',
+    textAlign: 'center',
   },
   lockedBanner: {
     backgroundColor: colors.occupiedBg,
@@ -1480,6 +1659,199 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '900',
     letterSpacing: 0.5,
+  },
+  addBtnInCart: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primaryDark,
+  },
+  addBtnTextInCart: {
+    color: '#FFFFFF',
+  },
+  slipSectionBlock: {
+    marginBottom: 16,
+  },
+  slipSectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingBottom: 6,
+    borderBottomWidth: 1.5,
+    borderBottomColor: colors.cardBorderStrong,
+    marginBottom: 6,
+  },
+  slipSectionTitle: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: colors.textSecondary,
+    letterSpacing: 0.5,
+  },
+  slipSectionSubtotal: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.textSecondary,
+  },
+  dispatchedItemRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 9,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.cardBorder,
+  },
+  dispatchedItemLeft: {
+    flex: 1,
+    marginRight: 10,
+  },
+  dispatchedItemTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  dispatchedItemName: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: colors.text,
+  },
+  statusPillCooking: {
+    backgroundColor: '#EFF6FF',
+    borderColor: '#3B82F6',
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  statusPillCookingText: {
+    color: '#1D4ED8',
+    fontSize: 10,
+    fontWeight: '900',
+  },
+  statusPillReady: {
+    backgroundColor: colors.availableBg,
+    borderColor: colors.availableBorder,
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  statusPillReadyText: {
+    color: colors.available,
+    fontSize: 10,
+    fontWeight: '900',
+  },
+  dispatchedItemSub: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginTop: 2,
+    fontWeight: '700',
+  },
+  dispatchedItemNotes: {
+    fontSize: 11,
+    color: '#92400E',
+    fontStyle: 'italic',
+    marginTop: 2,
+  },
+  dispatchedLockBadge: {
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  dispatchedLockBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#4B5563',
+  },
+  addCoursesPromptBox: {
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1.5,
+    borderColor: '#FDE68A',
+    borderRadius: 12,
+    padding: 14,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  addCoursesPromptIcon: {
+    fontSize: 26,
+    marginBottom: 4,
+  },
+  addCoursesPromptTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#92400E',
+  },
+  addCoursesPromptSub: {
+    fontSize: 11,
+    color: '#B45309',
+    textAlign: 'center',
+    marginTop: 2,
+    marginBottom: 8,
+  },
+  addCoursesPromptBtn: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  addCoursesPromptBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  newItemTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  newItemBadge: {
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+  },
+  newItemBadgeText: {
+    color: '#92400E',
+    fontSize: 9,
+    fontWeight: '900',
+  },
+  deleteItemBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#FEE2E2',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: '#FCA5A5',
+  },
+  deleteItemBtnText: {
+    color: '#DC2626',
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  subtotalBreakdown: {
+    marginBottom: 8,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.cardBorder,
+  },
+  breakdownRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 3,
+  },
+  breakdownLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textSecondary,
+  },
+  breakdownValue: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.text,
   },
 });
 

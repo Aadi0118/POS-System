@@ -214,6 +214,19 @@ const updateOrderStatus = async (req, res, next) => {
       order.rejectionReason = rejectionReason;
     }
 
+    // Keep item-level statuses synchronized with kitchen progression
+    if (status === 'Accepted') {
+      order.items.forEach((item) => {
+        if (item.status === 'Pending') {
+          item.status = 'Accepted';
+        }
+      });
+    } else if (status === 'Ready') {
+      order.items.forEach((item) => {
+        item.status = 'Ready';
+      });
+    }
+
     // If cook rejects order, free the table if no other items
     if (status === 'Rejected') {
       await Table.findByIdAndUpdate(order.tableId._id, {
@@ -257,7 +270,8 @@ const updateOrderStatus = async (req, res, next) => {
 /**
  * Updates items on an existing order.
  * Restricted to: Waiter, Admin
- * STRICT BUSINESS RULE: Cannot delete or update items after kitchen has Accepted or Ready the order!
+ * If Pending: Waiter can freely update/modify the items before the kitchen starts.
+ * If Accepted/Ready: Preserves existing items and appends newly added items.
  */
 const updateOrderItems = async (req, res, next) => {
   try {
@@ -273,22 +287,31 @@ const updateOrderItems = async (req, res, next) => {
       });
     }
 
-    // STRICT DEFENSE RULE: Check if kitchen has already accepted the order
-    if (order.status !== 'Pending') {
+    if (order.status === 'Completed' || order.paymentStatus === 'Paid') {
       return res.status(400).json({
         success: false,
-        error: `Items cannot be modified. The kitchen has already ${order.status.toLowerCase()} this order. Please inform the kitchen or request an Admin override.`,
-        currentStatus: order.status,
+        error: 'Order has already been paid and finalized.',
       });
     }
 
-    // Resolve menu items securely
+    if (order.status === 'Rejected') {
+      return res.status(400).json({
+        success: false,
+        error: 'Order was rejected by the kitchen.',
+      });
+    }
+
+    // Resolve menu items securely from database
     const menuItemIds = items.map((i) => i.menuItemId);
     const dbMenuItems = await MenuItem.find({ _id: { $in: menuItemIds } });
     const menuMap = new Map(dbMenuItems.map((item) => [item._id.toString(), item]));
 
     let calculatedTotal = 0;
     const processedItems = [];
+
+    // Track round numbers
+    const existingRounds = order.items.map((i) => i.round || 1);
+    const maxExistingRound = existingRounds.length > 0 ? Math.max(...existingRounds) : 1;
 
     for (const item of items) {
       const dbItem = menuMap.get(item.menuItemId);
@@ -313,11 +336,19 @@ const updateOrderItems = async (req, res, next) => {
         price: dbItem.price,
         quantity: item.quantity,
         notes: item.notes || '',
+        round: item.round || maxExistingRound,
+        status: item.status || (order.status === 'Accepted' ? 'Accepted' : 'Pending'),
       });
     }
 
     order.items = processedItems;
     order.totalAmount = Math.round(calculatedTotal * 100) / 100;
+
+    // If order was Ready and new items or modifications occurred, transition to Accepted so kitchen prepares them
+    if (order.status === 'Ready') {
+      order.status = 'Accepted';
+    }
+
     await order.save();
 
     const populatedOrder = await Order.findById(order._id)
@@ -333,6 +364,120 @@ const updateOrderItems = async (req, res, next) => {
     return res.status(200).json({
       success: true,
       message: 'Order items updated successfully.',
+      data: populatedOrder,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Appends new items (additional courses/rounds) to an existing active order.
+ * Restricted to: Waiter, Admin
+ * CRITICAL FEATURE: Allows guests to order more dishes at any time while dining,
+ * even when the kitchen has already Accepted or Readied previous courses!
+ */
+const appendOrderItems = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { items } = req.body;
+
+    const order = await Order.findById(id);
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        error: 'Order not found',
+      });
+    }
+
+    if (order.status === 'Completed' || order.paymentStatus === 'Paid') {
+      return res.status(400).json({
+        success: false,
+        error: 'This dining order has already been finalized and paid. Please open a new dining session.',
+      });
+    }
+
+    if (order.status === 'Rejected') {
+      return res.status(400).json({
+        success: false,
+        error: 'This order was rejected by the kitchen and cannot be amended.',
+      });
+    }
+
+    // Resolve menu items securely from DB to prevent client-side price tampering
+    const menuItemIds = items.map((i) => i.menuItemId);
+    const dbMenuItems = await MenuItem.find({ _id: { $in: menuItemIds } });
+    const menuMap = new Map(dbMenuItems.map((item) => [item._id.toString(), item]));
+
+    // Determine highest existing course round
+    const existingRounds = order.items.map((i) => i.round || 1);
+    const nextRound = existingRounds.length > 0 ? Math.max(...existingRounds) + 1 : 1;
+
+    let addedTotal = 0;
+    const newItemsProcessed = [];
+
+    for (const item of items) {
+      const dbItem = menuMap.get(item.menuItemId);
+      if (!dbItem) {
+        return res.status(400).json({
+          success: false,
+          error: `Menu item with ID ${item.menuItemId} does not exist.`,
+        });
+      }
+
+      if (!dbItem.isAvailable) {
+        return res.status(400).json({
+          success: false,
+          error: `'${dbItem.name}' is currently unavailable/out of stock.`,
+        });
+      }
+
+      const itemTotal = dbItem.price * item.quantity;
+      addedTotal += itemTotal;
+
+      newItemsProcessed.push({
+        menuItemId: dbItem._id,
+        name: dbItem.name,
+        price: dbItem.price,
+        quantity: item.quantity,
+        notes: item.notes || '',
+        round: nextRound,
+        status: 'Pending',
+      });
+    }
+
+    // Append to existing items
+    order.items.push(...newItemsProcessed);
+    order.totalAmount = Math.round((order.totalAmount + addedTotal) * 100) / 100;
+
+    // If order was already Ready, return to Accepted so the kitchen cooks the new dishes!
+    if (order.status === 'Ready') {
+      order.status = 'Accepted';
+    }
+
+    await order.save();
+
+    const populatedOrder = await Order.findById(order._id)
+      .populate('tableId', 'tableNumber status')
+      .populate('waiterId', 'name')
+      .lean();
+
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('order:updated', populatedOrder);
+      io.emit('order:items_added', {
+        orderId: populatedOrder._id,
+        tableNumber: populatedOrder.tableId?.tableNumber,
+        newItems: newItemsProcessed,
+        totalAmount: populatedOrder.totalAmount,
+        round: nextRound,
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Added ${newItemsProcessed.length} additional course(s) (Round ${nextRound}) to Table ${populatedOrder.tableId?.tableNumber || ''}.`,
       data: populatedOrder,
     });
   } catch (error) {
@@ -467,6 +612,7 @@ module.exports = {
   createOrder,
   updateOrderStatus,
   updateOrderItems,
+  appendOrderItems,
   processPayment,
   voidOrder,
 };
