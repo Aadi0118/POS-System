@@ -143,6 +143,45 @@ const AdminDashboard = () => {
   const [editingStaffNote, setEditingStaffNote] = useState(null);
   const [noteInputText, setNoteInputText] = useState('');
 
+  // Payroll & Salary States (Admin Managed, PF & Advances)
+  const getCurrentMonthStr = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  };
+
+  const [payrollMonth, setPayrollMonth] = useState(getCurrentMonthStr());
+  const [payrollData, setPayrollData] = useState(null);
+  const [payrollLoading, setPayrollLoading] = useState(false);
+  const payrollMonthRef = useRef(payrollMonth);
+  payrollMonthRef.current = payrollMonth;
+
+  // Day-Wise Salary Breakdown Modal for Admin
+  const [dayWiseModalVisible, setDayWiseModalVisible] = useState(false);
+  const [selectedStaffForDayWise, setSelectedStaffForDayWise] = useState(null);
+
+  // Salary & PF Config Modal
+  const [salaryConfigModalVisible, setSalaryConfigModalVisible] = useState(false);
+  const [editingStaffConfig, setEditingStaffConfig] = useState(null);
+  const [configBaseSalary, setConfigBaseSalary] = useState('');
+  const [configPfEnabled, setConfigPfEnabled] = useState(false);
+  const [configPfPercentage, setConfigPfPercentage] = useState('12');
+
+  // Advance Salary Modal
+  const [advanceModalVisible, setAdvanceModalVisible] = useState(false);
+  const [selectedStaffForAdvance, setSelectedStaffForAdvance] = useState(null);
+  const [advanceAmount, setAdvanceAmount] = useState('');
+  const [advanceDate, setAdvanceDate] = useState(getLocalDateString());
+  const [advancePaymentMode, setAdvancePaymentMode] = useState('Cash');
+  const [advanceReason, setAdvanceReason] = useState('');
+
+  // Salary Payout Settlement Modal
+  const [payoutModalVisible, setPayoutModalVisible] = useState(false);
+  const [selectedStaffForPayout, setSelectedStaffForPayout] = useState(null);
+  const [payoutAmount, setPayoutAmount] = useState('');
+  const [payoutPaymentMode, setPayoutPaymentMode] = useState('Cash');
+  const [payoutPaymentStatus, setPayoutPaymentStatus] = useState('Paid');
+  const [payoutNotes, setPayoutNotes] = useState('');
+
   useEffect(() => {
     fetchDashboardData(false);
     setupSocket();
@@ -151,13 +190,14 @@ const AdminDashboard = () => {
   const fetchDashboardData = async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const [metricsRes, ordersRes, menuRes, staffRes, tablesRes, attendanceRes] = await Promise.all([
+      const [metricsRes, ordersRes, menuRes, staffRes, tablesRes, attendanceRes, payrollRes] = await Promise.all([
         apiClient.get('/admin/metrics'),
         apiClient.get('/orders'),
         apiClient.get('/menu'),
         apiClient.get('/admin/staff'),
         apiClient.get('/tables'),
         apiClient.get(`/admin/attendance/daily?date=${attendanceDateRef.current}`),
+        apiClient.get(`/salary/overview?month=${payrollMonthRef.current}`),
       ]);
 
       if (metricsRes.data.success) setMetrics(metricsRes.data.data);
@@ -166,6 +206,7 @@ const AdminDashboard = () => {
       if (staffRes.data.success) setStaffList(staffRes.data.data);
       if (tablesRes.data.success) setTables(tablesRes.data.data);
       if (attendanceRes?.data?.success) setAttendanceData(attendanceRes.data.data);
+      if (payrollRes?.data?.success) setPayrollData(payrollRes.data.data);
     } catch (err) {
       console.error('[Admin Fetch Error]', err);
     } finally {
@@ -211,6 +252,10 @@ const AdminDashboard = () => {
       fetchAttendanceData(attendanceDateRef.current, true);
     });
 
+    socket.on('salary:updated', () => {
+      fetchPayrollData(payrollMonthRef.current, true);
+    });
+
     return () => {
       socket.off('order:created');
       socket.off('order:updated');
@@ -218,6 +263,7 @@ const AdminDashboard = () => {
       socket.off('order:completed');
       socket.off('table:status_updated');
       socket.off('attendance:updated');
+      socket.off('salary:updated');
     };
   };
 
@@ -526,6 +572,167 @@ const AdminDashboard = () => {
     }
   };
 
+  /* Payroll & Salary Handlers (Admin Only, PF & Advances) */
+  const fetchPayrollData = async (monthStr = payrollMonthRef.current, silent = false) => {
+    if (!silent) setPayrollLoading(true);
+    try {
+      const res = await apiClient.get(`/salary/overview?month=${monthStr}`);
+      if (res.data.success) {
+        setPayrollData(res.data.data);
+      }
+    } catch (err) {
+      console.error('[Payroll Fetch Error]', err);
+    } finally {
+      if (!silent) setPayrollLoading(false);
+    }
+  };
+
+  const handlePayrollMonthChange = (delta) => {
+    const [y, m] = payrollMonth.split('-').map(Number);
+    const d = new Date(y, m - 1 + delta, 1);
+    const newY = d.getFullYear();
+    const newM = String(d.getMonth() + 1).padStart(2, '0');
+    const newMonthStr = `${newY}-${newM}`;
+    setPayrollMonth(newMonthStr);
+    fetchPayrollData(newMonthStr);
+  };
+
+  const handleOpenDayWiseModal = (staffPayroll) => {
+    setSelectedStaffForDayWise(staffPayroll);
+    setDayWiseModalVisible(true);
+  };
+
+  const handleOpenSalaryConfigModal = (staffPayroll) => {
+    setEditingStaffConfig(staffPayroll.user);
+    setConfigBaseSalary(String(staffPayroll.user.baseSalary || ''));
+    setConfigPfEnabled(Boolean(staffPayroll.user.pfEnabled));
+    setConfigPfPercentage(String(staffPayroll.user.pfPercentage || '12'));
+    setSalaryConfigModalVisible(true);
+  };
+
+  const handleSaveSalaryConfig = async () => {
+    if (!editingStaffConfig) return;
+    try {
+      const res = await apiClient.post('/salary/config', {
+        userId: editingStaffConfig._id,
+        baseSalary: parseFloat(configBaseSalary) || 0,
+        pfEnabled: configPfEnabled,
+        pfPercentage: parseFloat(configPfPercentage) || 12,
+      });
+      if (res.data.success) {
+        Alert.alert('Updated', `Salary configuration saved for ${editingStaffConfig.name}.`);
+        setSalaryConfigModalVisible(false);
+        fetchPayrollData(payrollMonthRef.current, true);
+      }
+    } catch (err) {
+      Alert.alert('Configuration Error', err.response?.data?.error || 'Failed to update salary');
+    }
+  };
+
+  const handleOpenAdvanceModal = (staffPayroll) => {
+    setSelectedStaffForAdvance(staffPayroll);
+    setAdvanceAmount('');
+    setAdvanceDate(getLocalDateString());
+    setAdvancePaymentMode('Cash');
+    setAdvanceReason('');
+    setAdvanceModalVisible(true);
+  };
+
+  const handleSaveAdvance = async () => {
+    if (!selectedStaffForAdvance || !advanceAmount) {
+      Alert.alert('Validation Error', 'Advance amount is required.');
+      return;
+    }
+
+    try {
+      const res = await apiClient.post('/salary/advance', {
+        userId: selectedStaffForAdvance.user._id,
+        month: payrollMonth,
+        date: advanceDate,
+        amount: parseFloat(advanceAmount),
+        paymentMode: advancePaymentMode,
+        reason: advanceReason || 'Salary Advance',
+      });
+      if (res.data.success) {
+        Alert.alert('Advance Disbursed', `Advance of ₹${advanceAmount} recorded.`);
+        setAdvanceModalVisible(false);
+        fetchPayrollData(payrollMonthRef.current, true);
+      }
+    } catch (err) {
+      Alert.alert('Advance Error', err.response?.data?.error || 'Failed to record advance');
+    }
+  };
+
+  const handleDeleteAdvance = (advanceId) => {
+    Alert.alert(
+      'Cancel Advance',
+      'Are you sure you want to remove this advance record? It will no longer be deducted.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const res = await apiClient.delete(`/salary/advance/${advanceId}`);
+              if (res.data.success) {
+                fetchPayrollData(payrollMonthRef.current, true);
+                if (selectedStaffForDayWise) {
+                  const staffRes = await apiClient.get(
+                    `/salary/staff/${selectedStaffForDayWise.user._id}?month=${payrollMonth}`
+                  );
+                  if (staffRes.data.success) {
+                    setSelectedStaffForDayWise(staffRes.data.data);
+                  }
+                }
+              }
+            } catch (err) {
+              Alert.alert('Error', 'Failed to remove advance');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleOpenPayoutModal = (staffPayroll) => {
+    setSelectedStaffForPayout(staffPayroll);
+    const balance =
+      staffPayroll.payout.balanceRemaining > 0
+        ? staffPayroll.payout.balanceRemaining
+        : staffPayroll.netPayable;
+    setPayoutAmount(String(balance));
+    setPayoutPaymentMode('Cash');
+    setPayoutPaymentStatus('Paid');
+    setPayoutNotes('');
+    setPayoutModalVisible(true);
+  };
+
+  const handleSavePayout = async () => {
+    if (!selectedStaffForPayout || payoutAmount === '') {
+      Alert.alert('Validation Error', 'Payment amount is required.');
+      return;
+    }
+
+    try {
+      const res = await apiClient.post('/salary/payout', {
+        userId: selectedStaffForPayout.user._id,
+        month: payrollMonth,
+        amountPaid: parseFloat(payoutAmount) || 0,
+        paymentMode: payoutPaymentMode,
+        paymentStatus: payoutPaymentStatus,
+        notes: payoutNotes,
+      });
+      if (res.data.success) {
+        Alert.alert('Payment Recorded', `Salary payout of ₹${payoutAmount} confirmed.`);
+        setPayoutModalVisible(false);
+        fetchPayrollData(payrollMonthRef.current, true);
+      }
+    } catch (err) {
+      Alert.alert('Payout Error', err.response?.data?.error || 'Failed to record payout');
+    }
+  };
+
   const activeKitchenOrders = orders.filter((o) =>
     ['Pending', 'Accepted', 'Ready'].includes(o.status)
   );
@@ -599,6 +806,7 @@ const AdminDashboard = () => {
             { key: 'menu', label: '🍲 Catalog' },
             { key: 'staff', label: '👥 Personnel' },
             { key: 'attendance', label: '📋 Attendance' },
+            { key: 'payroll', label: '💰 Payroll' },
             { key: 'tables', label: '🪑 Floor' },
           ].map((tab) => (
             <TouchableOpacity
@@ -608,6 +816,8 @@ const AdminDashboard = () => {
                 setActiveTab(tab.key);
                 if (tab.key === 'attendance') {
                   fetchAttendanceData(attendanceDateRef.current);
+                } else if (tab.key === 'payroll') {
+                  fetchPayrollData(payrollMonthRef.current);
                 }
               }}
               activeOpacity={0.75}
@@ -1341,6 +1551,310 @@ const AdminDashboard = () => {
                 )}
               </View>
             )}
+
+            {/* TAB 7: STAFF PAYROLL & SALARY MANAGEMENT */}
+            {activeTab === 'payroll' && (
+              <View style={styles.tabContent}>
+                {/* Top Section Bar */}
+                <View style={styles.sectionTopBar}>
+                  <View>
+                    <Text style={styles.sectionHeader}>Staff Payroll & Salary</Text>
+                    <Text style={styles.sectionSubtitle}>
+                      Base pay, PF deductions, advances & day-wise settlements
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Month Navigator Bar */}
+                <View style={styles.dateNavCard}>
+                  <TouchableOpacity
+                    style={styles.dateNavArrowBtn}
+                    onPress={() => handlePayrollMonthChange(-1)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.dateNavArrowText}>◀</Text>
+                  </TouchableOpacity>
+
+                  <View style={styles.dateNavCenter}>
+                    <Text style={styles.dateNavMainText}>
+                      {formatDisplayMonth(payrollMonth)}
+                    </Text>
+                    <View style={styles.dateNavTagRow}>
+                      {payrollMonth === getCurrentMonthStr() ? (
+                        <View style={styles.todayBadge}>
+                          <Text style={styles.todayBadgeText}>⭐ Current Month</Text>
+                        </View>
+                      ) : (
+                        <TouchableOpacity
+                          style={styles.jumpTodayBtn}
+                          onPress={() => {
+                            const cur = getCurrentMonthStr();
+                            setPayrollMonth(cur);
+                            fetchPayrollData(cur);
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.jumpTodayText}>Jump to Current Month</Text>
+                        </TouchableOpacity>
+                      )}
+                      <Text style={styles.dateNavRawText}>{payrollMonth}</Text>
+                    </View>
+                  </View>
+
+                  <TouchableOpacity
+                    style={styles.dateNavArrowBtn}
+                    onPress={() => handlePayrollMonthChange(1)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.dateNavArrowText}>▶</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Payroll Executive Summary Card */}
+                {payrollData?.summary && (
+                  <View style={styles.payrollKpiCard}>
+                    <View style={styles.payrollKpiTop}>
+                      <View>
+                        <Text style={styles.attendanceKpiLabel}>TOTAL NET PAYROLL DUE</Text>
+                        <Text style={styles.payrollKpiValue}>
+                          ₹{payrollData.summary.totalNetPayable.toLocaleString()}
+                        </Text>
+                      </View>
+                      <View style={styles.payrollStatusSummary}>
+                        <Text style={styles.payrollPaidText}>
+                          Paid: ₹{payrollData.summary.totalAmountPaid.toLocaleString()}
+                        </Text>
+                        <Text style={styles.payrollPendingText}>
+                          Pending: ₹{payrollData.summary.totalBalancePending.toLocaleString()}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <GoldDivider />
+
+                    <View style={styles.payrollCountersRow}>
+                      <View style={styles.payrollCounterItem}>
+                        <Text style={styles.payrollCounterLabel}>Base Salaries</Text>
+                        <Text style={styles.payrollCounterValue}>
+                          ₹{payrollData.summary.totalBaseSalaries.toLocaleString()}
+                        </Text>
+                      </View>
+                      <View style={styles.payrollCounterItem}>
+                        <Text style={styles.payrollCounterLabel}>Gross Earned</Text>
+                        <Text style={[styles.payrollCounterValue, { color: colors.available }]}>
+                          ₹{payrollData.summary.totalGrossEarned.toLocaleString()}
+                        </Text>
+                      </View>
+                      <View style={styles.payrollCounterItem}>
+                        <Text style={styles.payrollCounterLabel}>PF Deductions</Text>
+                        <Text style={[styles.payrollCounterValue, { color: colors.dirty }]}>
+                          -₹{payrollData.summary.totalPfDeductions.toLocaleString()}
+                        </Text>
+                      </View>
+                      <View style={styles.payrollCounterItem}>
+                        <Text style={styles.payrollCounterLabel}>Advances Given</Text>
+                        <Text style={[styles.payrollCounterValue, { color: colors.occupied }]}>
+                          -₹{payrollData.summary.totalAdvanceDeductions.toLocaleString()}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                )}
+
+                {/* Staff Payroll Cards */}
+                {payrollLoading && !payrollData ? (
+                  <View style={styles.loaderCenter}>
+                    <ActivityIndicator size="small" color={colors.primary} />
+                    <Text style={styles.loaderText}>Calculating staff payroll statements...</Text>
+                  </View>
+                ) : payrollData?.staffPayrolls && payrollData.staffPayrolls.length > 0 ? (
+                  payrollData.staffPayrolls.map((staff) => (
+                    <View key={staff.user._id} style={styles.payrollStaffCard}>
+                      {/* Staff Header */}
+                      <View style={styles.payrollCardHeader}>
+                        <View style={styles.payrollCardLeft}>
+                          <View style={styles.attendanceAvatar}>
+                            <Text style={styles.attendanceAvatarText}>
+                              {staff.user.name.charAt(0).toUpperCase()}
+                            </Text>
+                          </View>
+                          <View>
+                            <Text style={styles.attendanceStaffName}>{staff.user.name}</Text>
+                            <View style={styles.roleBadgeRow}>
+                              <View
+                                style={[
+                                  styles.staffRolePill,
+                                  staff.user.role === 'Waiter' && styles.roleWaiter,
+                                  staff.user.role === 'Cook' && styles.roleCook,
+                                  staff.user.role === 'Cleaner' && styles.roleCleaner,
+                                ]}
+                              >
+                                <Text
+                                  style={[
+                                    styles.staffRolePillText,
+                                    staff.user.role === 'Waiter' && styles.roleWaiterText,
+                                    staff.user.role === 'Cook' && styles.roleCookText,
+                                    staff.user.role === 'Cleaner' && styles.roleCleanerText,
+                                  ]}
+                                >
+                                  {staff.user.role}
+                                </Text>
+                              </View>
+                            </View>
+                          </View>
+                        </View>
+
+                        {/* Payment Settlement Status Badge */}
+                        <View
+                          style={[
+                            styles.payoutBadge,
+                            staff.payout.paymentStatus === 'Paid' && styles.payoutPaid,
+                            staff.payout.paymentStatus === 'Partially Paid' && styles.payoutPartial,
+                            staff.payout.paymentStatus === 'Unpaid' && styles.payoutUnpaid,
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.payoutBadgeText,
+                              staff.payout.paymentStatus === 'Paid' && styles.textPaid,
+                              staff.payout.paymentStatus === 'Partially Paid' && styles.textPartial,
+                              staff.payout.paymentStatus === 'Unpaid' && styles.textUnpaid,
+                            ]}
+                          >
+                            {staff.payout.paymentStatus === 'Paid' && '✓ Paid'}
+                            {staff.payout.paymentStatus === 'Partially Paid' && `½ Paid: ₹${staff.payout.amountPaid}`}
+                            {staff.payout.paymentStatus === 'Unpaid' && '⏳ Unpaid'}
+                          </Text>
+                        </View>
+                      </View>
+
+                      {/* Base Salary & Configuration */}
+                      <View style={styles.salaryRateBar}>
+                        <View>
+                          <Text style={styles.salaryRateLabel}>BASE MONTHLY SALARY</Text>
+                          <Text style={styles.salaryRateValue}>
+                            ₹{staff.user.baseSalary.toLocaleString()}{' '}
+                            <Text style={styles.salaryRateSub}>(₹{staff.dailyRate}/day)</Text>
+                          </Text>
+                        </View>
+                        <TouchableOpacity
+                          style={styles.configSalaryBtn}
+                          onPress={() => handleOpenSalaryConfigModal(staff)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.configSalaryBtnText}>⚙️ Configure Pay & PF</Text>
+                        </TouchableOpacity>
+                      </View>
+
+                      {/* Attendance Performance & Gross Earned */}
+                      <View style={styles.payrollPerformanceRow}>
+                        <View style={styles.payrollPerfCol}>
+                          <Text style={styles.payrollPerfLabel}>Worked / Total</Text>
+                          <Text style={styles.payrollPerfValue}>
+                            {staff.workedDays} / {staff.totalDaysInMonth} Days
+                          </Text>
+                        </View>
+                        <View style={styles.payrollPerfCol}>
+                          <Text style={styles.payrollPerfLabel}>Gross Earned</Text>
+                          <Text style={[styles.payrollPerfValue, { color: colors.available }]}>
+                            ₹{staff.grossEarned.toLocaleString()}
+                          </Text>
+                        </View>
+                        <View style={styles.payrollPerfCol}>
+                          <Text style={styles.payrollPerfLabel}>Net Payable</Text>
+                          <Text style={[styles.payrollPerfValue, { color: colors.primaryDark }]}>
+                            ₹{staff.netPayable.toLocaleString()}
+                          </Text>
+                        </View>
+                      </View>
+
+                      {/* Itemized Deductions Box */}
+                      <View style={styles.payrollDeductionBox}>
+                        <View style={styles.deductionItemRow}>
+                          <Text style={styles.deductionItemLabel}>
+                            Provident Fund (PF {staff.deductions.pfEnabled ? `${staff.deductions.pfPercentage}%` : 'Off'}):
+                          </Text>
+                          <Text style={styles.deductionItemValue}>
+                            {staff.deductions.pfEnabled
+                              ? `- ₹${staff.deductions.pfDeduction.toLocaleString()}`
+                              : '₹0 (Inactive)'}
+                          </Text>
+                        </View>
+
+                        <View style={styles.deductionItemRow}>
+                          <Text style={styles.deductionItemLabel}>
+                            Advance Salary Deducted:
+                          </Text>
+                          <Text style={styles.deductionItemValue}>
+                            - ₹{staff.deductions.totalAdvance.toLocaleString()}
+                          </Text>
+                        </View>
+
+                        {/* List advances if taken */}
+                        {staff.deductions.advancesList && staff.deductions.advancesList.length > 0 && (
+                          <View style={styles.adminAdvancesList}>
+                            {staff.deductions.advancesList.map((adv) => (
+                              <View key={adv._id} style={styles.adminAdvanceRow}>
+                                <Text style={styles.adminAdvanceText}>
+                                  • {adv.date}: ₹{adv.amount} ({adv.reason || 'Advance'} via {adv.paymentMode})
+                                </Text>
+                                <TouchableOpacity
+                                  onPress={() => handleDeleteAdvance(adv._id)}
+                                  activeOpacity={0.7}
+                                >
+                                  <Text style={styles.deleteAdvanceText}>✕ Remove</Text>
+                                </TouchableOpacity>
+                              </View>
+                            ))}
+                          </View>
+                        )}
+
+                        <View style={styles.deductionTotalRow}>
+                          <Text style={styles.deductionTotalLabel}>Total Deductions:</Text>
+                          <Text style={styles.deductionTotalValue}>
+                            - ₹{staff.deductions.totalDeductions.toLocaleString()}
+                          </Text>
+                        </View>
+                      </View>
+
+                      {/* Action Controls */}
+                      <View style={styles.payrollActionRow}>
+                        <TouchableOpacity
+                          style={styles.advanceActionBtn}
+                          onPress={() => handleOpenAdvanceModal(staff)}
+                          activeOpacity={0.8}
+                        >
+                          <Text style={styles.advanceActionBtnText}>💸 Disburse Advance</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={styles.payoutActionBtn}
+                          onPress={() => handleOpenPayoutModal(staff)}
+                          activeOpacity={0.8}
+                        >
+                          <Text style={styles.payoutActionBtnText}>💳 Pay Salary</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={styles.dayWiseActionBtn}
+                          onPress={() => handleOpenDayWiseModal(staff)}
+                          activeOpacity={0.8}
+                        >
+                          <Text style={styles.dayWiseActionBtnText}>📅 Day-Wise Log →</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ))
+                ) : (
+                  <View style={styles.emptyAttendanceCard}>
+                    <Text style={styles.emptyAttendanceTitle}>No Staff Records</Text>
+                    <Text style={styles.emptyAttendanceSubtitle}>
+                      Add active restaurant personnel to generate payroll statements.
+                    </Text>
+                  </View>
+                )}
+              </View>
+            )}
           </ScrollView>
         )}
       </LuxuryPatternBackground>
@@ -1749,6 +2263,449 @@ const AdminDashboard = () => {
                 onPress={handleSaveStaffNote}
               >
                 <Text style={styles.modalSubmitText}>Save Remark</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL 1: ADMIN DAY-WISE SALARY STATEMENT */}
+      <Modal visible={dayWiseModalVisible} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, styles.historyModalCard]}>
+            <View style={styles.historyModalHeader}>
+              <View style={styles.historyHeaderLeft}>
+                <View style={styles.historyStaffAvatar}>
+                  <Text style={styles.historyStaffAvatarText}>
+                    {selectedStaffForDayWise?.user?.name?.charAt(0).toUpperCase() || 'S'}
+                  </Text>
+                </View>
+                <View>
+                  <Text style={styles.modalCardTitle}>
+                    {selectedStaffForDayWise?.user?.name}'s Salary Statement
+                  </Text>
+                  <Text style={styles.historyStaffRole}>
+                    {selectedStaffForDayWise?.user?.role} • {formatDisplayMonth(payrollMonth)}
+                  </Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                onPress={() => setDayWiseModalVisible(false)}
+                style={styles.historyCloseBtn}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.historyCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <GoldDivider />
+
+            <ScrollView style={styles.historyLogScroll} showsVerticalScrollIndicator={false}>
+              {/* Summary Metrics */}
+              {selectedStaffForDayWise && (
+                <View style={styles.monthSummaryBox}>
+                  <View style={styles.monthSummaryTop}>
+                    <Text style={styles.monthSummaryRateLabel}>NET PAYABLE AMOUNT</Text>
+                    <Text style={styles.monthSummaryRateValue}>
+                      ₹{selectedStaffForDayWise.netPayable.toLocaleString()}
+                    </Text>
+                  </View>
+
+                  <View style={styles.miniSummaryPillsRow}>
+                    <View style={styles.miniSalaryPill}>
+                      <Text style={styles.miniSalaryPillLabel}>Base Salary</Text>
+                      <Text style={styles.miniSalaryPillVal}>
+                        ₹{selectedStaffForDayWise.user.baseSalary.toLocaleString()}
+                      </Text>
+                    </View>
+                    <View style={styles.miniSalaryPill}>
+                      <Text style={styles.miniSalaryPillLabel}>Daily Rate</Text>
+                      <Text style={styles.miniSalaryPillVal}>
+                        ₹{selectedStaffForDayWise.dailyRate}
+                      </Text>
+                    </View>
+                    <View style={styles.miniSalaryPill}>
+                      <Text style={styles.miniSalaryPillLabel}>Worked Days</Text>
+                      <Text style={styles.miniSalaryPillVal}>
+                        {selectedStaffForDayWise.workedDays}/{selectedStaffForDayWise.totalDaysInMonth}
+                      </Text>
+                    </View>
+                    <View style={styles.miniSalaryPill}>
+                      <Text style={styles.miniSalaryPillLabel}>Gross Earned</Text>
+                      <Text style={[styles.miniSalaryPillVal, { color: colors.available }]}>
+                        ₹{selectedStaffForDayWise.grossEarned.toLocaleString()}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Deductions Breakdown */}
+                  <View style={styles.adminModalDeductionBox}>
+                    <View style={styles.deductionLine}>
+                      <Text style={styles.deductionLabel}>
+                        PF ({selectedStaffForDayWise.deductions.pfEnabled ? `${selectedStaffForDayWise.deductions.pfPercentage}%` : 'Off'}):
+                      </Text>
+                      <Text style={styles.deductionValue}>
+                        {selectedStaffForDayWise.deductions.pfEnabled
+                          ? `- ₹${selectedStaffForDayWise.deductions.pfDeduction.toLocaleString()}`
+                          : '₹0'}
+                      </Text>
+                    </View>
+
+                    <View style={styles.deductionLine}>
+                      <Text style={styles.deductionLabel}>Advances Deducted:</Text>
+                      <Text style={styles.deductionValue}>
+                        - ₹{selectedStaffForDayWise.deductions.totalAdvance.toLocaleString()}
+                      </Text>
+                    </View>
+
+                    {selectedStaffForDayWise.deductions.advancesList?.length > 0 && (
+                      <View style={styles.advancesListContainer}>
+                        {selectedStaffForDayWise.deductions.advancesList.map((adv) => (
+                          <View key={adv._id} style={styles.adminAdvanceRow}>
+                            <Text style={styles.advanceItemText}>
+                              • {adv.date}: ₹{adv.amount} ({adv.reason} via {adv.paymentMode})
+                            </Text>
+                            <TouchableOpacity
+                              onPress={() => handleDeleteAdvance(adv._id)}
+                              activeOpacity={0.7}
+                            >
+                              <Text style={styles.deleteAdvanceText}>✕ Remove</Text>
+                            </TouchableOpacity>
+                          </View>
+                        ))}
+                      </View>
+                    )}
+
+                    <View style={styles.dividerThin} />
+                    <View style={styles.deductionLineTotal}>
+                      <Text style={styles.totalDeductionLabel}>Total Deductions:</Text>
+                      <Text style={styles.totalDeductionValue}>
+                        - ₹{selectedStaffForDayWise.deductions.totalDeductions.toLocaleString()}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              )}
+
+              {/* Day-Wise Breakdown List */}
+              <Text style={[styles.cardHeaderTitle, { marginTop: 8, marginBottom: 4 }]}>
+                Day-Wise Earnings Log
+              </Text>
+
+              {selectedStaffForDayWise?.dayWiseBreakdown?.map((item) => (
+                <View key={item.dateString} style={styles.historyLogRow}>
+                  <View style={styles.historyLogDateCol}>
+                    <Text style={styles.historyLogDate}>{item.dateString}</Text>
+                    <Text style={styles.historyLogDay}>{item.dayOfWeek}</Text>
+                  </View>
+
+                  <View style={styles.dayMiddleCol}>
+                    <View
+                      style={[
+                        styles.dayStatusPill,
+                        item.status === 'Present' && styles.dayPresent,
+                        item.status === 'Half-Day' && styles.dayHalfDay,
+                        item.status === 'Absent' && styles.dayAbsent,
+                        item.status === 'On Leave' && styles.dayLeave,
+                        item.status === 'Not Marked' && styles.dayUnmarked,
+                        item.status === 'Upcoming' && styles.dayUpcoming,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.dayStatusText,
+                          item.status === 'Present' && styles.textPresent,
+                          item.status === 'Half-Day' && styles.textHalfDay,
+                          item.status === 'Absent' && styles.textAbsent,
+                          item.status === 'On Leave' && styles.textLeave,
+                          item.status === 'Not Marked' && styles.textUnmarked,
+                          item.status === 'Upcoming' && styles.textUpcoming,
+                        ]}
+                      >
+                        {item.status}
+                      </Text>
+                    </View>
+                    {item.notes ? (
+                      <Text style={styles.dayNotesText} numberOfLines={1}>
+                        "{item.notes}"
+                      </Text>
+                    ) : null}
+                  </View>
+
+                  <View style={styles.historyLogInfoCol}>
+                    <Text
+                      style={[
+                        styles.dayEarnedText,
+                        item.earnedAmount > 0 && styles.dayEarnedPositive,
+                      ]}
+                    >
+                      {item.earnedAmount > 0 ? `+ ₹${item.earnedAmount}` : '₹0'}
+                    </Text>
+                  </View>
+                </View>
+              ))}
+            </ScrollView>
+
+            <TouchableOpacity
+              style={[styles.modalSubmitBtn, { marginTop: 14 }]}
+              onPress={() => setDayWiseModalVisible(false)}
+            >
+              <Text style={styles.modalSubmitText}>Close Statement</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL 2: CONFIGURE SALARY & PF */}
+      <Modal visible={salaryConfigModalVisible} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalCardTitle}>Configure Salary & Benefits</Text>
+            <Text style={styles.noteModalSubtitle}>
+              For {editingStaffConfig?.name} ({editingStaffConfig?.role})
+            </Text>
+            <GoldDivider />
+
+            <Text style={styles.inputLabel}>Monthly Base Salary (₹):</Text>
+            <TextInput
+              style={styles.formInput}
+              placeholder="e.g. 15000"
+              placeholderTextColor={colors.textMuted}
+              keyboardType="numeric"
+              value={configBaseSalary}
+              onChangeText={setConfigBaseSalary}
+            />
+
+            <Text style={styles.inputLabel}>Provident Fund (PF):</Text>
+            <View style={styles.pfToggleRow}>
+              <TouchableOpacity
+                style={[styles.pfToggleBtn, configPfEnabled && styles.pfToggleBtnActive]}
+                onPress={() => setConfigPfEnabled(!configPfEnabled)}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.pfToggleBtnText, configPfEnabled && styles.pfToggleBtnTextActive]}>
+                  {configPfEnabled ? '✓ PF Deduction Enabled' : '○ PF Deduction Disabled'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {configPfEnabled && (
+              <>
+                <Text style={styles.inputLabel}>PF Contribution Percentage (%):</Text>
+                <TextInput
+                  style={styles.formInput}
+                  placeholder="12"
+                  placeholderTextColor={colors.textMuted}
+                  keyboardType="numeric"
+                  value={configPfPercentage}
+                  onChangeText={setConfigPfPercentage}
+                />
+              </>
+            )}
+
+            <View style={styles.modalBtnRow}>
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                onPress={() => setSalaryConfigModalVisible(false)}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalSubmitBtn}
+                onPress={handleSaveSalaryConfig}
+              >
+                <Text style={styles.modalSubmitText}>Save Settings</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL 3: DISBURSE ADVANCE SALARY */}
+      <Modal visible={advanceModalVisible} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalCardTitle}>Disburse Advance Salary</Text>
+            <Text style={styles.noteModalSubtitle}>
+              For {selectedStaffForAdvance?.user?.name} • Settlement Month: {payrollMonth}
+            </Text>
+            <GoldDivider />
+
+            <Text style={styles.inputLabel}>Advance Amount (₹):</Text>
+            <TextInput
+              style={styles.formInput}
+              placeholder="e.g. 2000"
+              placeholderTextColor={colors.textMuted}
+              keyboardType="numeric"
+              value={advanceAmount}
+              onChangeText={setAdvanceAmount}
+            />
+
+            <Text style={styles.inputLabel}>Disbursement Date (YYYY-MM-DD):</Text>
+            <TextInput
+              style={styles.formInput}
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor={colors.textMuted}
+              value={advanceDate}
+              onChangeText={setAdvanceDate}
+            />
+
+            <Text style={styles.inputLabel}>Payment Mode:</Text>
+            <View style={styles.rolePickerRow}>
+              {['Cash', 'UPI', 'Bank Transfer'].map((mode) => (
+                <TouchableOpacity
+                  key={mode}
+                  style={[
+                    styles.roleSelectPill,
+                    advancePaymentMode === mode && styles.roleSelectPillActive,
+                  ]}
+                  onPress={() => setAdvancePaymentMode(mode)}
+                >
+                  <Text
+                    style={[
+                      styles.roleSelectText,
+                      advancePaymentMode === mode && styles.roleSelectTextActive,
+                    ]}
+                  >
+                    {mode}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={styles.inputLabel}>Reason / Quick Presets:</Text>
+            <View style={styles.presetChipsRow}>
+              {['Festival Advance', 'Medical', 'Travel', 'Emergency', 'Rent'].map((preset) => (
+                <TouchableOpacity
+                  key={preset}
+                  style={styles.presetChip}
+                  onPress={() => setAdvanceReason(preset)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.presetChipText}>+ {preset}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <TextInput
+              style={[styles.formInput, { height: 55 }]}
+              placeholder="Reason for advance..."
+              placeholderTextColor={colors.textMuted}
+              value={advanceReason}
+              onChangeText={setAdvanceReason}
+            />
+
+            <View style={styles.modalBtnRow}>
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                onPress={() => setAdvanceModalVisible(false)}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalSubmitBtn}
+                onPress={handleSaveAdvance}
+              >
+                <Text style={styles.modalSubmitText}>Disburse Advance</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL 4: RECORD SALARY SETTLEMENT */}
+      <Modal visible={payoutModalVisible} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalCardTitle}>Record Salary Payout</Text>
+            <Text style={styles.noteModalSubtitle}>
+              For {selectedStaffForPayout?.user?.name} • Month: {formatDisplayMonth(payrollMonth)}
+            </Text>
+            <GoldDivider />
+
+            <View style={styles.payoutNetBanner}>
+              <Text style={styles.payoutNetLabel}>TOTAL NET PAYABLE DUE</Text>
+              <Text style={styles.payoutNetValue}>
+                ₹{selectedStaffForPayout?.netPayable?.toLocaleString()}
+              </Text>
+            </View>
+
+            <Text style={styles.inputLabel}>Amount Being Paid Now (₹):</Text>
+            <TextInput
+              style={styles.formInput}
+              placeholder="e.g. 5000"
+              placeholderTextColor={colors.textMuted}
+              keyboardType="numeric"
+              value={payoutAmount}
+              onChangeText={setPayoutAmount}
+            />
+
+            <Text style={styles.inputLabel}>Payment Mode:</Text>
+            <View style={styles.rolePickerRow}>
+              {['Cash', 'UPI', 'Bank Transfer'].map((mode) => (
+                <TouchableOpacity
+                  key={mode}
+                  style={[
+                    styles.roleSelectPill,
+                    payoutPaymentMode === mode && styles.roleSelectPillActive,
+                  ]}
+                  onPress={() => setPayoutPaymentMode(mode)}
+                >
+                  <Text
+                    style={[
+                      styles.roleSelectText,
+                      payoutPaymentMode === mode && styles.roleSelectTextActive,
+                    ]}
+                  >
+                    {mode}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={styles.inputLabel}>Settlement Status:</Text>
+            <View style={styles.rolePickerRow}>
+              {['Paid', 'Partially Paid'].map((st) => (
+                <TouchableOpacity
+                  key={st}
+                  style={[
+                    styles.roleSelectPill,
+                    payoutPaymentStatus === st && styles.roleSelectPillActive,
+                  ]}
+                  onPress={() => setPayoutPaymentStatus(st)}
+                >
+                  <Text
+                    style={[
+                      styles.roleSelectText,
+                      payoutPaymentStatus === st && styles.roleSelectTextActive,
+                    ]}
+                  >
+                    {st === 'Paid' ? '✓ Fully Settled (Paid)' : '½ Partial Payment'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <TextInput
+              style={[styles.formInput, { height: 50 }]}
+              placeholder="Optional payment notes or transaction reference..."
+              placeholderTextColor={colors.textMuted}
+              value={payoutNotes}
+              onChangeText={setPayoutNotes}
+            />
+
+            <View style={styles.modalBtnRow}>
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                onPress={() => setPayoutModalVisible(false)}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalSubmitBtn}
+                onPress={handleSavePayout}
+              >
+                <Text style={styles.modalSubmitText}>Confirm Payout</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -3099,6 +4056,501 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: colors.secondary,
+  },
+  /* Payroll & Salary Management Styles */
+  payrollKpiCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: colors.cardBorderStrong,
+    padding: 14,
+    marginBottom: 16,
+    shadowColor: colors.shadowColor,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 2,
+    gap: 10,
+  },
+  payrollKpiTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  payrollKpiValue: {
+    fontSize: 24,
+    fontWeight: '900',
+    color: colors.primaryDark,
+    marginTop: 2,
+  },
+  payrollStatusSummary: {
+    alignItems: 'flex-end',
+    gap: 3,
+  },
+  payrollPaidText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.available,
+  },
+  payrollPendingText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.occupied,
+  },
+  payrollCountersRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 4,
+  },
+  payrollCounterItem: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  payrollCounterLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.textMuted,
+  },
+  payrollCounterValue: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: colors.secondary,
+    marginTop: 2,
+  },
+  payrollStaffCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: colors.cardBorderStrong,
+    padding: 14,
+    marginBottom: 14,
+    shadowColor: colors.shadowColor,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 2,
+    gap: 10,
+  },
+  payrollCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  payrollCardLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  payoutBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1.5,
+  },
+  payoutPaid: {
+    backgroundColor: '#ECFDF5',
+    borderColor: '#10B981',
+  },
+  payoutPartial: {
+    backgroundColor: '#FFFBEB',
+    borderColor: '#F59E0B',
+  },
+  payoutUnpaid: {
+    backgroundColor: '#FFF1F2',
+    borderColor: '#EF4444',
+  },
+  payoutBadgeText: {
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  textPaid: {
+    color: '#059669',
+  },
+  textPartial: {
+    color: '#D97706',
+  },
+  textUnpaid: {
+    color: '#E11D48',
+  },
+  salaryRateBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+  },
+  salaryRateLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+    color: colors.textMuted,
+  },
+  salaryRateValue: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: colors.primaryDark,
+    marginTop: 1,
+  },
+  salaryRateSub: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textSecondary,
+  },
+  configSalaryBtn: {
+    backgroundColor: colors.primaryLight,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  configSalaryBtnText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.primaryDark,
+  },
+  payrollPerformanceRow: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    padding: 8,
+  },
+  payrollPerfCol: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  payrollPerfLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.textMuted,
+  },
+  payrollPerfValue: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: colors.secondary,
+    marginTop: 2,
+  },
+  payrollDeductionBox: {
+    backgroundColor: '#FFF8F8',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    padding: 10,
+    gap: 6,
+  },
+  deductionItemRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  deductionItemLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  deductionItemValue: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.dirty,
+  },
+  adminAdvancesList: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 6,
+    padding: 6,
+    gap: 4,
+    borderWidth: 1,
+    borderColor: '#FEE2E2',
+  },
+  adminAdvanceRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  adminAdvanceText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#991B1B',
+  },
+  deleteAdvanceText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#DC2626',
+    marginLeft: 6,
+  },
+  deductionTotalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 4,
+    borderTopWidth: 1,
+    borderTopColor: '#FECACA',
+  },
+  deductionTotalLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.secondary,
+  },
+  deductionTotalValue: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: colors.dirty,
+  },
+  payrollActionRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 4,
+  },
+  advanceActionBtn: {
+    flex: 1,
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1.5,
+    borderColor: '#F59E0B',
+    paddingVertical: 8,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  advanceActionBtnText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#B45309',
+  },
+  payoutActionBtn: {
+    flex: 1,
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1.5,
+    borderColor: '#10B981',
+    paddingVertical: 8,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  payoutActionBtnText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#059669',
+  },
+  dayWiseActionBtn: {
+    flex: 1.1,
+    backgroundColor: colors.primaryLight,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    paddingVertical: 8,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  dayWiseActionBtnText: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: colors.primaryDark,
+  },
+  /* Day-Wise Statement Modal styles */
+  miniSummaryPillsRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 6,
+  },
+  miniSalaryPill: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    borderRadius: 8,
+    padding: 6,
+    alignItems: 'center',
+  },
+  miniSalaryPillLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: colors.textMuted,
+  },
+  miniSalaryPillVal: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: colors.secondary,
+    marginTop: 1,
+  },
+  adminModalDeductionBox: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    borderRadius: 8,
+    padding: 8,
+    gap: 4,
+    marginTop: 6,
+  },
+  deductionLine: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  deductionLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  deductionValue: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.dirty,
+  },
+  advancesListContainer: {
+    backgroundColor: '#FFF1F2',
+    borderRadius: 6,
+    padding: 6,
+    gap: 3,
+  },
+  advanceItemText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#BE123C',
+  },
+  dividerThin: {
+    height: 1,
+    backgroundColor: colors.cardBorder,
+    marginVertical: 2,
+  },
+  deductionLineTotal: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  totalDeductionLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.secondary,
+  },
+  totalDeductionValue: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: colors.dirty,
+  },
+  cardHeaderTitle: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: colors.secondary,
+  },
+  dayMiddleCol: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  dayStatusPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  dayStatusText: {
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  dayPresent: {
+    backgroundColor: '#ECFDF5',
+    borderColor: '#10B981',
+  },
+  textPresent: {
+    color: '#059669',
+  },
+  dayHalfDay: {
+    backgroundColor: '#FFFBEB',
+    borderColor: '#F59E0B',
+  },
+  textHalfDay: {
+    color: '#D97706',
+  },
+  dayAbsent: {
+    backgroundColor: '#FFF1F2',
+    borderColor: '#EF4444',
+  },
+  textAbsent: {
+    color: '#E11D48',
+  },
+  dayLeave: {
+    backgroundColor: '#F3E8FF',
+    borderColor: '#A855F7',
+  },
+  textLeave: {
+    color: '#7E22CE',
+  },
+  dayUnmarked: {
+    backgroundColor: '#F1F5F9',
+    borderColor: '#CBD5E1',
+  },
+  textUnmarked: {
+    color: '#64748B',
+  },
+  dayUpcoming: {
+    backgroundColor: '#F8FAFC',
+    borderColor: '#E2E8F0',
+  },
+  textUpcoming: {
+    color: '#94A3B8',
+  },
+  dayNotesText: {
+    fontSize: 9,
+    fontStyle: 'italic',
+    color: colors.textMuted,
+    marginTop: 2,
+    maxWidth: 120,
+  },
+  dayEarnedText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.textMuted,
+  },
+  dayEarnedPositive: {
+    color: colors.available,
+    fontWeight: '900',
+  },
+  pfToggleRow: {
+    marginBottom: 10,
+  },
+  pfToggleBtn: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1.5,
+    borderColor: colors.cardBorderStrong,
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  pfToggleBtnActive: {
+    backgroundColor: '#ECFDF5',
+    borderColor: '#10B981',
+  },
+  pfToggleBtnText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.textSecondary,
+  },
+  pfToggleBtnTextActive: {
+    color: '#059669',
+    fontWeight: '900',
+  },
+  payoutNetBanner: {
+    backgroundColor: '#F0FDF4',
+    borderWidth: 1.5,
+    borderColor: '#86EFAC',
+    borderRadius: 10,
+    padding: 10,
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  payoutNetLabel: {
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+    color: '#166534',
+  },
+  payoutNetValue: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: '#15803D',
+    marginTop: 2,
   },
 });
 

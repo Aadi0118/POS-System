@@ -24,6 +24,7 @@ const menuRoutes = require('./routes/menu.routes');
 const tableRoutes = require('./routes/table.routes');
 const orderRoutes = require('./routes/order.routes');
 const adminRoutes = require('./routes/admin.routes');
+const salaryRoutes = require('./routes/salary.routes');
 
 // Initialize Express application
 const app = express();
@@ -110,6 +111,7 @@ app.use('/api/menu', menuRoutes);
 app.use('/api/tables', tableRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/salary', salaryRoutes);
 
 // Catch-all 404 handler for undefined resources
 app.use('*', (req, res) => {

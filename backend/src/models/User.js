@@ -36,6 +36,22 @@ const userSchema = new mongoose.Schema(
       default: true,
       index: true,
     },
+    // Salary & Benefits Configuration (Admin Managed)
+    baseSalary: {
+      type: Number,
+      default: 0,
+      min: [0, 'Base monthly salary cannot be negative'],
+    },
+    pfEnabled: {
+      type: Boolean,
+      default: false,
+    },
+    pfPercentage: {
+      type: Number,
+      default: 12,
+      min: [0, 'PF percentage cannot be negative'],
+      max: [100, 'PF percentage cannot exceed 100%'],
+    },
   },
   {
     timestamps: true,

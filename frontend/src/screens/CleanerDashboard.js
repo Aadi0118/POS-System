@@ -28,6 +28,7 @@ import {
   MichelinStars,
   LuxuryProgressBar,
 } from '../components/LuxuryPattern';
+import StaffSalaryModal from '../components/StaffSalaryModal';
 import colors from '../theme/colors';
 
 const CleanerDashboard = () => {
@@ -36,6 +37,7 @@ const CleanerDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [cleaningId, setCleaningId] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [salaryModalVisible, setSalaryModalVisible] = useState(false);
 
   useEffect(() => {
     fetchDashboardData();
@@ -111,10 +113,19 @@ const CleanerDashboard = () => {
               <Text style={styles.hygieneInsignia}>⚜️ HAUTE HYGIÈNE & SERVICE ⚜️</Text>
               <Text style={styles.hygieneTitle}>Main Dining Salon Hygiene</Text>
             </View>
-            <View style={styles.cleanRateBadge}>
-              <Text style={styles.cleanRateText}>
-                {cleanTablesCount}/{totalTablesCount} Clean
-              </Text>
+            <View style={styles.hygieneRightActions}>
+              <TouchableOpacity
+                style={styles.salaryActionBtn}
+                onPress={() => setSalaryModalVisible(true)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.salaryActionBtnText}>💰 My Salary</Text>
+              </TouchableOpacity>
+              <View style={styles.cleanRateBadge}>
+                <Text style={styles.cleanRateText}>
+                  {cleanTablesCount}/{totalTablesCount} Clean
+                </Text>
+              </View>
             </View>
           </View>
 
@@ -205,6 +216,12 @@ const CleanerDashboard = () => {
           </ScrollView>
         )}
       </LuxuryPatternBackground>
+
+      {/* Staff Salary Statement Modal */}
+      <StaffSalaryModal
+        visible={salaryModalVisible}
+        onClose={() => setSalaryModalVisible(false)}
+      />
     </View>
   );
 };
@@ -247,6 +264,29 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     color: colors.text,
     marginTop: 2,
+  },
+  hygieneRightActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  salaryActionBtn: {
+    backgroundColor: colors.primaryLight,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  salaryActionBtnText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: colors.primaryDark,
   },
   cleanRateBadge: {
     backgroundColor: colors.availableBg,
