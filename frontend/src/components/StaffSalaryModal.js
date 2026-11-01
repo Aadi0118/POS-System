@@ -197,12 +197,34 @@ const StaffSalaryModal = ({ visible, onClose }) => {
                 <Text style={styles.cardHeaderTitle}>✂️ Deductions Breakdown</Text>
                 <View style={styles.deductionLine}>
                   <Text style={styles.deductionLabel}>
-                    Provident Fund (PF {salaryData.deductions.pfEnabled ? `${salaryData.deductions.pfPercentage}%` : 'Disabled'}):
+                    PF Employee (12% Deducted from salary):
                   </Text>
-                  <Text style={styles.deductionValue}>
+                  <Text style={[styles.deductionValue, { color: colors.dirty }]}>
                     {salaryData.deductions.pfEnabled
-                      ? `- ₹${salaryData.deductions.pfDeduction.toLocaleString()}`
+                      ? `- ₹${(salaryData.deductions.pfEmployeeDeduction || salaryData.deductions.pfDeduction || Math.round((salaryData.grossEarned || salaryData.baseSalary || 0) * 0.12)).toLocaleString()}`
                       : '₹0 (Inactive)'}
+                  </Text>
+                </View>
+
+                <View style={styles.deductionLine}>
+                  <Text style={styles.deductionLabel}>
+                    PF Employer (12% Admin contribution to your PF):
+                  </Text>
+                  <Text style={[styles.deductionValue, { color: colors.available }]}>
+                    {salaryData.deductions.pfEnabled
+                      ? `+ ₹${(salaryData.deductions.pfEmployerContribution || Math.round((salaryData.grossEarned || salaryData.baseSalary || 0) * 0.12)).toLocaleString()}`
+                      : '₹0 (Inactive)'}
+                  </Text>
+                </View>
+
+                <View style={styles.deductionLine}>
+                  <Text style={styles.deductionLabel}>
+                    Total Monthly PF Deposited (24% into fund):
+                  </Text>
+                  <Text style={[styles.deductionValue, { color: '#B8860B', fontWeight: '800' }]}>
+                    {salaryData.deductions.pfEnabled
+                      ? `₹${(salaryData.deductions.totalPfFund || Math.round((salaryData.grossEarned || salaryData.baseSalary || 0) * 0.24)).toLocaleString()}`
+                      : '₹0'}
                   </Text>
                 </View>
 

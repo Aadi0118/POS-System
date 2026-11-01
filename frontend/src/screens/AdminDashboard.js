@@ -609,30 +609,107 @@ const AdminDashboard = () => {
     setDayWiseModalVisible(true);
   };
 
-  const handleOpenSalaryConfigModal = (staffPayroll) => {
-    setEditingStaffConfig(staffPayroll.user);
-    setConfigBaseSalary(String(staffPayroll.user.baseSalary || ''));
-    setConfigPfEnabled(Boolean(staffPayroll.user.pfEnabled));
-    setConfigPfPercentage(String(staffPayroll.user.pfPercentage || '12'));
+  const handleOpenSalaryConfigModal = (target) => {
+    const staffUser = target?.user || target;
+    if (!staffUser) return;
+    setEditingStaffConfig(staffUser);
+    setConfigBaseSalary(String(staffUser.baseSalary || ''));
+    setConfigPfEnabled(typeof staffUser.pfEnabled === 'boolean' ? staffUser.pfEnabled : true);
+    setConfigPfPercentage(String(staffUser.pfPercentage || '12'));
     setSalaryConfigModalVisible(true);
   };
 
   const handleSaveSalaryConfig = async () => {
     if (!editingStaffConfig) return;
+    const salaryVal = parseFloat(configBaseSalary) || 0;
     try {
-      const res = await apiClient.post('/salary/config', {
-        userId: editingStaffConfig._id,
-        baseSalary: parseFloat(configBaseSalary) || 0,
-        pfEnabled: configPfEnabled,
-        pfPercentage: parseFloat(configPfPercentage) || 12,
-      });
-      if (res.data.success) {
-        Alert.alert('Updated', `Salary configuration saved for ${editingStaffConfig.name}.`);
-        setSalaryConfigModalVisible(false);
-        fetchPayrollData(payrollMonthRef.current, true);
+      let saved = false;
+      try {
+        const res = await apiClient.post('/salary/config', {
+          userId: editingStaffConfig._id,
+          baseSalary: salaryVal,
+          pfEnabled: configPfEnabled,
+          pfPercentage: 12,
+          employerPfPercentage: 12,
+        });
+        if (res.data?.success) saved = true;
+      } catch (salaryErr) {
+        // Fallback to /admin/staff/:id if /salary/config is not deployed yet
+        const fallbackRes = await apiClient.put(`/admin/staff/${editingStaffConfig._id}`, {
+          baseSalary: salaryVal,
+          pfEnabled: configPfEnabled,
+          pfPercentage: 12,
+          employerPfPercentage: 12,
+        });
+        if (fallbackRes.data?.success) saved = true;
       }
+
+      const empPf = configPfEnabled ? Math.round(salaryVal * 0.12) : 0;
+      const emprPf = configPfEnabled ? Math.round(salaryVal * 0.12) : 0;
+      const totalPf = empPf + emprPf;
+      const netTakeHome = Math.max(0, salaryVal - empPf);
+
+      // Optimistically update staffList
+      setStaffList((prev) =>
+        prev.map((s) =>
+          s._id === editingStaffConfig._id
+            ? { ...s, baseSalary: salaryVal, pfEnabled: configPfEnabled, pfPercentage: 12, employerPfPercentage: 12 }
+            : s
+        )
+      );
+
+      // Optimistically update payrollData if present
+      setPayrollData((prev) => {
+        if (!prev?.staffPayrolls) return prev;
+        return {
+          ...prev,
+          staffPayrolls: prev.staffPayrolls.map((sp) => {
+            if (sp.user._id === editingStaffConfig._id) {
+              const worked = sp.workedDays || 0;
+              const totalDays = sp.totalDaysInMonth || 30;
+              const dailyRate = Math.round((salaryVal / totalDays) * 100) / 100;
+              const grossEarned = Math.round(dailyRate * worked * 100) / 100;
+              const pfEmpDeduction = configPfEnabled ? Math.round(grossEarned * 0.12) : 0;
+              const pfEmprContribution = configPfEnabled ? Math.round(grossEarned * 0.12) : 0;
+              const totalAdvance = sp.deductions?.totalAdvance || 0;
+              const netPayable = Math.max(0, grossEarned - pfEmpDeduction - totalAdvance);
+              return {
+                ...sp,
+                dailyRate,
+                grossEarned,
+                user: {
+                  ...sp.user,
+                  baseSalary: salaryVal,
+                  pfEnabled: configPfEnabled,
+                  pfPercentage: 12,
+                  employerPfPercentage: 12,
+                },
+                deductions: {
+                  ...sp.deductions,
+                  pfEnabled: configPfEnabled,
+                  pfPercentage: 12,
+                  pfDeduction: pfEmpDeduction,
+                  pfEmployeeDeduction: pfEmpDeduction,
+                  pfEmployerContribution: pfEmprContribution,
+                  totalPfFund: pfEmpDeduction + pfEmprContribution,
+                  totalDeductions: totalAdvance + pfEmpDeduction,
+                },
+                netPayable,
+              };
+            }
+            return sp;
+          }),
+        };
+      });
+
+      Alert.alert(
+        'Salary Saved Successfully',
+        `Staff: ${editingStaffConfig.name}\n\n• Total Salary: ₹${salaryVal.toLocaleString()}\n• PF Employee (12%): -₹${empPf.toLocaleString()} (Deducted from salary)\n• PF Employer (12%): +₹${emprPf.toLocaleString()} (Admin Contribution to PF Fund)\n• Total PF Fund (24%): ₹${totalPf.toLocaleString()}\n• Net Salary (After PF): ₹${netTakeHome.toLocaleString()}`
+      );
+      setSalaryConfigModalVisible(false);
+      fetchPayrollData(payrollMonthRef.current, true);
     } catch (err) {
-      Alert.alert('Configuration Error', err.response?.data?.error || 'Failed to update salary');
+      Alert.alert('Configuration Error', err.response?.data?.error || err.message || 'Failed to update salary');
     }
   };
 
@@ -1166,21 +1243,34 @@ const AdminDashboard = () => {
                       <View>
                         <Text style={styles.staffNameText}>{staff.name}</Text>
                         <Text style={styles.staffRoleText}>Role: {staff.role}</Text>
+                        <Text style={{ fontSize: 11, color: colors.primaryDark, fontWeight: '700', marginTop: 2 }}>
+                          💼 Total: ₹{(staff.baseSalary || 0).toLocaleString()} • Net: ₹{Math.round((staff.baseSalary || 0) * (staff.pfEnabled ? 0.88 : 1)).toLocaleString()} {staff.pfEnabled ? '(PF 12%+12%)' : '(PF Off)'}
+                        </Text>
                         <Text style={[styles.staffStatusText, { color: staff.isActive ? colors.available : colors.dirty }]}>
                           {staff.isActive ? '● Active In Service' : '○ Suspended'}
                         </Text>
                       </View>
                     </View>
 
-                    <TouchableOpacity
-                      style={[styles.statusToggleBtn, staff.isActive && styles.statusDeactivate]}
-                      onPress={() => handleToggleStaffStatus(staff)}
-                      activeOpacity={0.8}
-                    >
-                      <Text style={[styles.statusToggleText, staff.isActive && styles.statusDeactivateText]}>
-                        {staff.isActive ? 'Deactivate' : 'Activate'}
-                      </Text>
-                    </TouchableOpacity>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <TouchableOpacity
+                        style={styles.staffSalaryActionBtn}
+                        onPress={() => handleOpenSalaryConfigModal(staff)}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={styles.staffSalaryActionBtnText}>💰 Salary & PF</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[styles.statusToggleBtn, staff.isActive && styles.statusDeactivate]}
+                        onPress={() => handleToggleStaffStatus(staff)}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={[styles.statusToggleText, staff.isActive && styles.statusDeactivateText]}>
+                          {staff.isActive ? 'Deactivate' : 'Activate'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 ))}
               </View>
@@ -1779,12 +1869,34 @@ const AdminDashboard = () => {
                       <View style={styles.payrollDeductionBox}>
                         <View style={styles.deductionItemRow}>
                           <Text style={styles.deductionItemLabel}>
-                            Provident Fund (PF {staff.deductions.pfEnabled ? `${staff.deductions.pfPercentage}%` : 'Off'}):
+                            PF Employee (12% Deducted from salary):
                           </Text>
-                          <Text style={styles.deductionItemValue}>
+                          <Text style={[styles.deductionItemValue, { color: colors.dirty }]}>
                             {staff.deductions.pfEnabled
-                              ? `- ₹${staff.deductions.pfDeduction.toLocaleString()}`
+                              ? `- ₹${(staff.deductions.pfEmployeeDeduction || staff.deductions.pfDeduction || Math.round((staff.grossEarned || staff.user.baseSalary || 0) * 0.12)).toLocaleString()}`
                               : '₹0 (Inactive)'}
+                          </Text>
+                        </View>
+
+                        <View style={styles.deductionItemRow}>
+                          <Text style={styles.deductionItemLabel}>
+                            PF Employer (12% Admin contribution to PF fund):
+                          </Text>
+                          <Text style={[styles.deductionItemValue, { color: colors.available }]}>
+                            {staff.deductions.pfEnabled
+                              ? `+ ₹${(staff.deductions.pfEmployerContribution || Math.round((staff.grossEarned || staff.user.baseSalary || 0) * 0.12)).toLocaleString()}`
+                              : '₹0 (Inactive)'}
+                          </Text>
+                        </View>
+
+                        <View style={styles.deductionItemRow}>
+                          <Text style={styles.deductionItemLabel}>
+                            Total Monthly PF Fund (24% into employee PF):
+                          </Text>
+                          <Text style={[styles.deductionItemValue, { color: '#B8860B', fontWeight: '800' }]}>
+                            {staff.deductions.pfEnabled
+                              ? `₹${(staff.deductions.totalPfFund || Math.round((staff.grossEarned || staff.user.baseSalary || 0) * 0.24)).toLocaleString()}`
+                              : '₹0'}
                           </Text>
                         </View>
 
@@ -1852,6 +1964,73 @@ const AdminDashboard = () => {
                       </View>
                     </View>
                   ))
+                ) : staffList.filter((s) => s.role !== 'Admin').length > 0 ? (
+                  staffList
+                    .filter((s) => s.role !== 'Admin')
+                    .map((staff) => {
+                      const salaryVal = staff.baseSalary || 0;
+                      const empPf = staff.pfEnabled ? Math.round(salaryVal * 0.12) : 0;
+                      const emprPf = staff.pfEnabled ? Math.round(salaryVal * 0.12) : 0;
+                      const totalPf = empPf + emprPf;
+                      const netPayable = staff.pfEnabled ? Math.max(0, salaryVal - empPf) : salaryVal;
+
+                      return (
+                        <View key={staff._id} style={styles.payrollStaffCard}>
+                          <View style={styles.payrollCardHeader}>
+                            <View style={styles.payrollCardLeft}>
+                              <View style={styles.attendanceAvatar}>
+                                <Text style={styles.attendanceAvatarText}>{staff.name.charAt(0).toUpperCase()}</Text>
+                              </View>
+                              <View>
+                                <Text style={styles.attendanceStaffName}>{staff.name}</Text>
+                                <View style={styles.roleBadgeRow}>
+                                  <View style={styles.staffRolePill}>
+                                    <Text style={styles.staffRolePillText}>{staff.role}</Text>
+                                  </View>
+                                </View>
+                              </View>
+                            </View>
+                          </View>
+
+                          <View style={styles.salaryRateBar}>
+                            <View>
+                              <Text style={styles.salaryRateLabel}>TOTAL MONTHLY SALARY</Text>
+                              <Text style={styles.salaryRateValue}>₹{salaryVal.toLocaleString()}</Text>
+                            </View>
+                            <TouchableOpacity
+                              style={styles.configSalaryBtn}
+                              onPress={() => handleOpenSalaryConfigModal(staff)}
+                              activeOpacity={0.7}
+                            >
+                              <Text style={styles.configSalaryBtnText}>⚙️ Configure Total Salary & PF</Text>
+                            </TouchableOpacity>
+                          </View>
+
+                          <View style={styles.payrollDeductionBox}>
+                            <View style={styles.deductionItemRow}>
+                              <Text style={styles.deductionItemLabel}>Total Salary (Gross):</Text>
+                              <Text style={styles.deductionItemValue}>₹{salaryVal.toLocaleString()}</Text>
+                            </View>
+                            <View style={styles.deductionItemRow}>
+                              <Text style={styles.deductionItemLabel}>PF Employee (12% Deducted from salary):</Text>
+                              <Text style={[styles.deductionItemValue, { color: colors.dirty }]}>{staff.pfEnabled ? `- ₹${empPf.toLocaleString()}` : '₹0 (Off)'}</Text>
+                            </View>
+                            <View style={styles.deductionItemRow}>
+                              <Text style={styles.deductionItemLabel}>PF Employer (12% Admin contribution to PF):</Text>
+                              <Text style={[styles.deductionItemValue, { color: colors.available }]}>{staff.pfEnabled ? `+ ₹${emprPf.toLocaleString()}` : '₹0 (Off)'}</Text>
+                            </View>
+                            <View style={styles.deductionItemRow}>
+                              <Text style={styles.deductionItemLabel}>Total PF Deposited in Fund (24%):</Text>
+                              <Text style={[styles.deductionItemValue, { color: '#B8860B', fontWeight: '800' }]}>{staff.pfEnabled ? `₹${totalPf.toLocaleString()}` : '₹0'}</Text>
+                            </View>
+                            <View style={styles.deductionTotalRow}>
+                              <Text style={styles.deductionTotalLabel}>Net Salary (After PF deduction):</Text>
+                              <Text style={[styles.deductionTotalValue, { color: colors.available }]}>₹{netPayable.toLocaleString()}</Text>
+                            </View>
+                          </View>
+                        </View>
+                      );
+                    })
                 ) : (
                   <View style={styles.emptyAttendanceCard}>
                     <Text style={styles.emptyAttendanceTitle}>No Staff Records</Text>
@@ -2491,24 +2670,57 @@ const AdminDashboard = () => {
                 activeOpacity={0.8}
               >
                 <Text style={[styles.pfToggleBtnText, configPfEnabled && styles.pfToggleBtnTextActive]}>
-                  {configPfEnabled ? '✓ PF Deduction Enabled' : '○ PF Deduction Disabled'}
+                  {configPfEnabled ? '✓ PF Active: 12% Employee + 12% Employer' : '○ PF Disabled'}
                 </Text>
               </TouchableOpacity>
             </View>
 
-            {configPfEnabled && (
-              <>
-                <Text style={styles.inputLabel}>PF Contribution Percentage (%):</Text>
-                <TextInput
-                  style={styles.formInput}
-                  placeholder="12"
-                  placeholderTextColor={colors.textMuted}
-                  keyboardType="numeric"
-                  value={configPfPercentage}
-                  onChangeText={setConfigPfPercentage}
-                />
-              </>
-            )}
+            {/* Live Calculation Preview Card */}
+            {(() => {
+              const totalVal = parseFloat(configBaseSalary) || 0;
+              const empPf = configPfEnabled ? Math.round(totalVal * 0.12) : 0;
+              const emprPf = configPfEnabled ? Math.round(totalVal * 0.12) : 0;
+              const totalPf = empPf + emprPf;
+              const netVal = configPfEnabled ? Math.max(0, totalVal - empPf) : totalVal;
+              return (
+                <View style={styles.liveSalaryPreviewBox}>
+                  <Text style={styles.previewTitle}>📊 Live Salary & PF Calculation Preview</Text>
+
+                  <View style={styles.previewRow}>
+                    <Text style={styles.previewLabel}>Total Salary (Monthly Gross):</Text>
+                    <Text style={styles.previewValueBold}>₹{totalVal.toLocaleString()}</Text>
+                  </View>
+
+                  <View style={styles.previewRow}>
+                    <Text style={styles.previewLabel}>PF Employee (12% Deducted from salary):</Text>
+                    <Text style={[styles.previewValue, { color: colors.dirty }]}>
+                      {configPfEnabled ? `- ₹${empPf.toLocaleString()}` : '₹0 (Disabled)'}
+                    </Text>
+                  </View>
+
+                  <View style={styles.previewRow}>
+                    <Text style={styles.previewLabel}>PF Employer (12% Admin contribution to PF fund):</Text>
+                    <Text style={[styles.previewValue, { color: colors.available }]}>
+                      {configPfEnabled ? `+ ₹${emprPf.toLocaleString()}` : '₹0 (Disabled)'}
+                    </Text>
+                  </View>
+
+                  <View style={styles.previewRow}>
+                    <Text style={styles.previewLabel}>Total PF Deposited (24% into fund):</Text>
+                    <Text style={[styles.previewValue, { color: '#B8860B', fontWeight: '800' }]}>
+                      {configPfEnabled ? `₹${totalPf.toLocaleString()}` : '₹0'}
+                    </Text>
+                  </View>
+
+                  <View style={styles.previewDivider} />
+
+                  <View style={styles.previewRowNet}>
+                    <Text style={styles.previewNetLabel}>Net Salary (Take-Home after PF deduction):</Text>
+                    <Text style={styles.previewNetValue}>₹{netVal.toLocaleString()}</Text>
+                  </View>
+                </View>
+              );
+            })()}
 
             <View style={styles.modalBtnRow}>
               <TouchableOpacity
@@ -2521,7 +2733,7 @@ const AdminDashboard = () => {
                 style={styles.modalSubmitBtn}
                 onPress={handleSaveSalaryConfig}
               >
-                <Text style={styles.modalSubmitText}>Save Settings</Text>
+                <Text style={styles.modalSubmitText}>Save Salary Settings</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -4558,6 +4770,79 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     color: '#15803D',
     marginTop: 2,
+  },
+  liveSalaryPreviewBox: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    padding: 12,
+    marginVertical: 12,
+  },
+  previewTitle: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: colors.primaryDark,
+    marginBottom: 8,
+    letterSpacing: 0.5,
+  },
+  previewRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginVertical: 3,
+  },
+  previewLabel: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontWeight: '600',
+    flex: 1,
+  },
+  previewValue: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  previewValueBold: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: colors.textPrimary,
+  },
+  previewDivider: {
+    height: 1,
+    backgroundColor: '#CBD5E1',
+    marginVertical: 8,
+  },
+  previewRowNet: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 4,
+  },
+  previewNetLabel: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: '#0F172A',
+  },
+  previewNetValue: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: colors.available,
+  },
+  staffSalaryActionBtn: {
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: '#F59E0B',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+  },
+  staffSalaryActionBtnText: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#92400E',
   },
 });
 

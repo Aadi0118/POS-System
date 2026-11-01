@@ -18,6 +18,7 @@ const updateSalaryConfigSchema = Joi.object({
   }),
   pfEnabled: Joi.boolean().required(),
   pfPercentage: Joi.number().min(0).max(100).default(12),
+  employerPfPercentage: Joi.number().min(0).max(100).default(12),
 });
 
 const recordAdvanceSchema = Joi.object({

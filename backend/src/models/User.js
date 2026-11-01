@@ -52,6 +52,12 @@ const userSchema = new mongoose.Schema(
       min: [0, 'PF percentage cannot be negative'],
       max: [100, 'PF percentage cannot exceed 100%'],
     },
+    employerPfPercentage: {
+      type: Number,
+      default: 12,
+      min: [0, 'Employer PF percentage cannot be negative'],
+      max: [100, 'Employer PF percentage cannot exceed 100%'],
+    },
   },
   {
     timestamps: true,

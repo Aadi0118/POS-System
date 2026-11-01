@@ -88,7 +88,7 @@ const getMetrics = async (req, res, next) => {
 const getStaff = async (req, res, next) => {
   try {
     const staff = await User.find()
-      .select('_id name role isActive createdAt updatedAt')
+      .select('_id name role isActive baseSalary pfEnabled pfPercentage employerPfPercentage createdAt updatedAt')
       .sort({ role: 1, name: 1 })
       .lean();
 
@@ -156,8 +156,17 @@ const updateStaff = async (req, res, next) => {
     if (pin) {
       user.hashedPin = pin; // Pre-save hook will hash
     }
+    if (typeof req.body.baseSalary !== 'undefined') user.baseSalary = Number(req.body.baseSalary);
+    if (typeof req.body.pfEnabled !== 'undefined') user.pfEnabled = Boolean(req.body.pfEnabled);
+    if (typeof req.body.pfPercentage !== 'undefined') user.pfPercentage = Number(req.body.pfPercentage);
+    if (typeof req.body.employerPfPercentage !== 'undefined') user.employerPfPercentage = Number(req.body.employerPfPercentage);
 
     await user.save();
+
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('salary:updated', { userId: user._id, type: 'config' });
+    }
 
     return res.status(200).json({
       success: true,
@@ -167,6 +176,10 @@ const updateStaff = async (req, res, next) => {
         name: user.name,
         role: user.role,
         isActive: user.isActive,
+        baseSalary: user.baseSalary,
+        pfEnabled: user.pfEnabled,
+        pfPercentage: user.pfPercentage,
+        employerPfPercentage: user.employerPfPercentage,
       },
     });
   } catch (error) {

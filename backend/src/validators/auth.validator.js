@@ -33,6 +33,10 @@ const createStaffSchema = z.object({
     role: z.enum(['Admin', 'Waiter', 'Cook', 'Cleaner'], {
       required_error: 'Role must be Admin, Waiter, Cook, or Cleaner',
     }),
+    baseSalary: z.number().min(0).optional(),
+    pfEnabled: z.boolean().optional(),
+    pfPercentage: z.number().min(0).max(100).optional(),
+    employerPfPercentage: z.number().min(0).max(100).optional(),
   }).strict(),
 });
 
@@ -45,6 +49,10 @@ const updateStaffSchema = z.object({
     pin: z.string().regex(PIN_REGEX, 'PIN must consist of exactly 4 numeric digits').optional(),
     role: z.enum(['Admin', 'Waiter', 'Cook', 'Cleaner']).optional(),
     isActive: z.boolean().optional(),
+    baseSalary: z.number().min(0).optional(),
+    pfEnabled: z.boolean().optional(),
+    pfPercentage: z.number().min(0).max(100).optional(),
+    employerPfPercentage: z.number().min(0).max(100).optional(),
   }).strict(),
 });
 

@@ -26,8 +26,8 @@ const calculateStaffMonthSalary = async (user, month) => {
   const baseSalary = user.baseSalary || 0;
   const dailyRate =
     totalDaysInMonth > 0
-      ? Math.round((baseSalary / totalDaysInMonth) * 100) / 100
-      : 0;
+      ? Math.round((baseSalary / totalDaysInMonth) * 100) / 100 : 0;
+  
 
   // Fetch all attendance records for this employee in this month
   const attendanceRecords = await Attendance.find({
@@ -126,10 +126,15 @@ const calculateStaffMonthSalary = async (user, month) => {
 
   // Deductions: Provident Fund (PF)
   const pfEnabled = Boolean(user.pfEnabled);
-  const pfPercentage = user.pfPercentage || 12;
-  const pfDeduction = pfEnabled
-    ? Math.round(grossEarned * (pfPercentage / 100))
-    : 0;
+  const pfEmployeePercentage = user.pfPercentage || 12;
+  const pfEmployerPercentage = user.employerPfPercentage || 12;
+  const pfEmployeeDeduction = pfEnabled ? Math.round(grossEarned * (pfEmployeePercentage / 100)) : 0;
+  const pfEmployerContribution = pfEnabled ? Math.round(grossEarned * (pfEmployerPercentage / 100)) : 0;
+  const totalPfFund = pfEmployeeDeduction + pfEmployerContribution;
+  const pfDeduction = pfEmployeeDeduction;
+
+
+
 
   const totalDeductions = totalAdvance + pfDeduction;
   const netPayable = Math.max(0, Math.round(grossEarned - totalDeductions));
@@ -154,7 +159,8 @@ const calculateStaffMonthSalary = async (user, month) => {
       role: user.role,
       baseSalary,
       pfEnabled,
-      pfPercentage,
+      pfPercentage: pfEmployeePercentage,
+      employerPfPercentage,
     },
     month,
     totalDaysInMonth,
@@ -168,8 +174,12 @@ const calculateStaffMonthSalary = async (user, month) => {
     grossEarned,
     deductions: {
       pfEnabled,
-      pfPercentage,
+      pfPercentage: pfEmployeePercentage,
+      employerPfPercentage,
       pfDeduction,
+      pfEmployeeDeduction,
+      pfEmployerContribution,
+      totalPfFund,
       totalAdvance,
       advancesList: advances,
       totalDeductions,
@@ -213,6 +223,9 @@ const getMonthlyPayrollOverview = async (req, res, next) => {
         acc.totalBaseSalaries += curr.user.baseSalary || 0;
         acc.totalGrossEarned += curr.grossEarned;
         acc.totalPfDeductions += curr.deductions.pfDeduction;
+        acc.totalEmployeePf += curr.deductions.pfEmployeeDeduction || 0;
+        acc.totalEmployerPf += curr.deductions.pfEmployerContribution || 0;
+        acc.totalPfFundDeposited += curr.deductions.totalPfFund || 0;
         acc.totalAdvanceDeductions += curr.deductions.totalAdvance;
         acc.totalNetPayable += curr.netPayable;
         acc.totalAmountPaid += curr.payout.amountPaid;
@@ -225,6 +238,9 @@ const getMonthlyPayrollOverview = async (req, res, next) => {
         totalBaseSalaries: 0,
         totalGrossEarned: 0,
         totalPfDeductions: 0,
+        totalEmployeePf: 0,
+        totalEmployerPf: 0,
+        totalPfFundDeposited: 0,
         totalAdvanceDeductions: 0,
         totalNetPayable: 0,
         totalAmountPaid: 0,
@@ -303,7 +319,7 @@ const getMySalary = async (req, res, next) => {
  */
 const updateSalaryConfig = async (req, res, next) => {
   try {
-    const { userId, baseSalary, pfEnabled, pfPercentage } = req.body;
+    const { userId, baseSalary, pfEnabled, pfPercentage, employerPfPercentage } = req.body;
 
     const updatedUser = await User.findByIdAndUpdate(
       userId,
@@ -311,6 +327,7 @@ const updateSalaryConfig = async (req, res, next) => {
         baseSalary: Number(baseSalary),
         pfEnabled: Boolean(pfEnabled),
         pfPercentage: pfPercentage !== undefined ? Number(pfPercentage) : 12,
+        employerPfPercentage: employerPfPercentage !== undefined ? Number(employerPfPercentage) : 12,
       },
       { new: true, runValidators: true }
     );
@@ -334,6 +351,7 @@ const updateSalaryConfig = async (req, res, next) => {
         baseSalary: updatedUser.baseSalary,
         pfEnabled: updatedUser.pfEnabled,
         pfPercentage: updatedUser.pfPercentage,
+        employerPfPercentage: updatedUser.employerPfPercentage,
       },
     });
   } catch (error) {
