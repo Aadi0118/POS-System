@@ -1,4 +1,4 @@
-# 🌶️ Spicy Zaika - Production Restaurant POS & Kitchen Display System (KDS)
+# 🌶️ SHREE RESTAURANT - Production Restaurant POS & Kitchen Display System (KDS)
 
 A real-time, role-based Point of Sale (POS) and Kitchen Display System (KDS) built for high-volume multi-cuisine restaurant operations. Engineered with a hardened security posture, strict Role-Based Access Control (RBAC), bcrypt PIN hashing, JWT session protection in hardware keystores, and instant WebSocket event synchronization.
 
