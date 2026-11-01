@@ -26,6 +26,7 @@ const connectDB = async () => {
     const conn = await mongoose.connect(mongoUri, options);
     console.log(`[Database] Connected Successfully: ${conn.connection.host}/${conn.connection.name}`);
     registerLifecycleHandlers();
+    await cleanupLegacyIndexes(conn.connection.db);
     await autoSeed();
     return conn;
   } catch (initialErr) {
@@ -77,6 +78,29 @@ const registerLifecycleHandlers = () => {
 
   process.on('SIGINT', () => cleanup('SIGINT'));
   process.on('SIGTERM', () => cleanup('SIGTERM'));
+};
+
+const cleanupLegacyIndexes = async (db) => {
+  if (!db) return;
+  try {
+    const ordersIndexes = await db.collection('orders').indexes();
+    if (ordersIndexes.some((i) => i.name === 'id_1')) {
+      await db.collection('orders').dropIndex('id_1');
+      console.log('[Database] Dropped legacy unique index id_1 on orders.');
+    }
+  } catch (err) {
+    // Ignore if collection or index does not exist
+  }
+
+  try {
+    const menuIndexes = await db.collection('menuitems').indexes();
+    if (menuIndexes.some((i) => i.name === 'id_1')) {
+      await db.collection('menuitems').dropIndex('id_1');
+      console.log('[Database] Dropped legacy unique index id_1 on menuitems.');
+    }
+  } catch (err) {
+    // Ignore if collection or index does not exist
+  }
 };
 
 const autoSeed = async () => {

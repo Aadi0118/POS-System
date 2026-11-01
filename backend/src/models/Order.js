@@ -44,6 +44,12 @@ const orderItemSchema = new mongoose.Schema(
 
 const orderSchema = new mongoose.Schema(
   {
+    id: {
+      type: String,
+      default: function () {
+        return `ord-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`;
+      },
+    },
     orderNumber: {
       type: String,
       unique: true,
@@ -107,6 +113,9 @@ orderSchema.pre('save', async function (next) {
     const timestamp = Date.now().toString().slice(-6);
     const random = Math.floor(100 + Math.random() * 900);
     this.orderNumber = `ORD-${timestamp}-${random}`;
+  }
+  if (!this.id) {
+    this.id = `ord-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`;
   }
   next();
 });
