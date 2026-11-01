@@ -9,7 +9,7 @@
  * - Master Void Override with audit trail.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -97,6 +97,52 @@ const AdminDashboard = () => {
     capacity: '4',
   });
 
+  // Date Helpers for Staff Attendance
+  const getLocalDateString = (d = new Date()) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const formatDisplayDate = (dateStr) => {
+    if (!dateStr) return '';
+    const parts = dateStr.split('-').map(Number);
+    const d = new Date(parts[0], parts[1] - 1, parts[2]);
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return `${days[d.getDay()]}, ${parts[2]} ${months[d.getMonth()]} ${parts[0]}`;
+  };
+
+  const formatDisplayMonth = (monthStr) => {
+    if (!monthStr) return '';
+    const [y, m] = monthStr.split('-').map(Number);
+    const months = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December',
+    ];
+    return `${months[m - 1]} ${y}`;
+  };
+
+  // Staff Attendance States (Strictly Admin Managed, No Shift Timings)
+  const [attendanceDate, setAttendanceDate] = useState(getLocalDateString());
+  const [attendanceData, setAttendanceData] = useState(null);
+  const [attendanceLoading, setAttendanceLoading] = useState(false);
+  const attendanceDateRef = useRef(attendanceDate);
+  attendanceDateRef.current = attendanceDate;
+
+  // Monthly Attendance History Modal
+  const [historyModalVisible, setHistoryModalVisible] = useState(false);
+  const [selectedStaffForHistory, setSelectedStaffForHistory] = useState(null);
+  const [historyMonth, setHistoryMonth] = useState(getLocalDateString().substring(0, 7));
+  const [staffHistoryData, setStaffHistoryData] = useState(null);
+  const [staffHistoryLoading, setStaffHistoryLoading] = useState(false);
+
+  // Note/Remark Modal
+  const [noteModalVisible, setNoteModalVisible] = useState(false);
+  const [editingStaffNote, setEditingStaffNote] = useState(null);
+  const [noteInputText, setNoteInputText] = useState('');
+
   useEffect(() => {
     fetchDashboardData(false);
     setupSocket();
@@ -105,12 +151,13 @@ const AdminDashboard = () => {
   const fetchDashboardData = async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const [metricsRes, ordersRes, menuRes, staffRes, tablesRes] = await Promise.all([
+      const [metricsRes, ordersRes, menuRes, staffRes, tablesRes, attendanceRes] = await Promise.all([
         apiClient.get('/admin/metrics'),
         apiClient.get('/orders'),
         apiClient.get('/menu'),
         apiClient.get('/admin/staff'),
         apiClient.get('/tables'),
+        apiClient.get(`/admin/attendance/daily?date=${attendanceDateRef.current}`),
       ]);
 
       if (metricsRes.data.success) setMetrics(metricsRes.data.data);
@@ -118,6 +165,7 @@ const AdminDashboard = () => {
       if (menuRes.data.success) setMenuItems(menuRes.data.data);
       if (staffRes.data.success) setStaffList(staffRes.data.data);
       if (tablesRes.data.success) setTables(tablesRes.data.data);
+      if (attendanceRes?.data?.success) setAttendanceData(attendanceRes.data.data);
     } catch (err) {
       console.error('[Admin Fetch Error]', err);
     } finally {
@@ -159,12 +207,17 @@ const AdminDashboard = () => {
       fetchDashboardData(true);
     });
 
+    socket.on('attendance:updated', () => {
+      fetchAttendanceData(attendanceDateRef.current, true);
+    });
+
     return () => {
       socket.off('order:created');
       socket.off('order:updated');
       socket.off('order:status_updated');
       socket.off('order:completed');
       socket.off('table:status_updated');
+      socket.off('attendance:updated');
     };
   };
 
@@ -287,6 +340,192 @@ const AdminDashboard = () => {
     }
   };
 
+  /* Attendance Management Handlers (Admin Only, No Shift Timings) */
+  const fetchAttendanceData = async (dateStr = attendanceDateRef.current, silent = false) => {
+    if (!silent) setAttendanceLoading(true);
+    try {
+      const res = await apiClient.get(`/admin/attendance/daily?date=${dateStr}`);
+      if (res.data.success) {
+        setAttendanceData(res.data.data);
+      }
+    } catch (err) {
+      console.error('[Attendance Fetch Error]', err);
+    } finally {
+      if (!silent) setAttendanceLoading(false);
+    }
+  };
+
+  const handleDateChange = (delta) => {
+    const parts = attendanceDate.split('-').map(Number);
+    const d = new Date(parts[0], parts[1] - 1, parts[2]);
+    d.setDate(d.getDate() + delta);
+    const newDateStr = getLocalDateString(d);
+    setAttendanceDate(newDateStr);
+    fetchAttendanceData(newDateStr);
+  };
+
+  const handleSetTodayDate = () => {
+    const todayStr = getLocalDateString();
+    if (attendanceDate !== todayStr) {
+      setAttendanceDate(todayStr);
+      fetchAttendanceData(todayStr);
+    }
+  };
+
+  const handleMarkStaff = async (staffId, status, currentNotes = '') => {
+    // Optimistic UI update
+    if (attendanceData && attendanceData.roster) {
+      const updatedRoster = attendanceData.roster.map((s) => {
+        if (s.staffId === staffId) {
+          return {
+            ...s,
+            attendance: {
+              ...(s.attendance || {}),
+              status,
+              notes: currentNotes,
+              markedAt: new Date().toISOString(),
+            },
+          };
+        }
+        return s;
+      });
+
+      let presentCount = 0;
+      let halfDayCount = 0;
+      let absentCount = 0;
+      let leaveCount = 0;
+      let unmarkedCount = 0;
+      updatedRoster.forEach((r) => {
+        const st = r.attendance?.status;
+        if (st === 'Present') presentCount++;
+        else if (st === 'Half-Day') halfDayCount++;
+        else if (st === 'Absent') absentCount++;
+        else if (st === 'On Leave') leaveCount++;
+        else unmarkedCount++;
+      });
+      const markedCount = presentCount + halfDayCount + absentCount + leaveCount;
+      const attendanceRate =
+        markedCount > 0
+          ? Math.round(((presentCount + halfDayCount * 0.5) / markedCount) * 100)
+          : 0;
+
+      setAttendanceData({
+        ...attendanceData,
+        roster: updatedRoster,
+        stats: {
+          totalStaff: updatedRoster.length,
+          presentCount,
+          halfDayCount,
+          absentCount,
+          leaveCount,
+          unmarkedCount,
+          attendanceRate,
+        },
+      });
+    }
+
+    try {
+      const res = await apiClient.post('/admin/attendance/mark', {
+        userId: staffId,
+        date: attendanceDate,
+        status,
+        notes: currentNotes,
+      });
+      if (res.data.success) {
+        fetchAttendanceData(attendanceDate, true);
+      }
+    } catch (err) {
+      Alert.alert('Attendance Error', err.response?.data?.error || 'Failed to update attendance');
+      fetchAttendanceData(attendanceDate, true);
+    }
+  };
+
+  const handleMarkAllPresent = () => {
+    Alert.alert(
+      '⚡ Mark All Present',
+      `Mark all active staff as PRESENT for ${attendanceDate}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Confirm All Present',
+          onPress: async () => {
+            try {
+              setAttendanceLoading(true);
+              const res = await apiClient.post('/admin/attendance/mark-all', {
+                date: attendanceDate,
+                status: 'Present',
+              });
+              if (res.data.success) {
+                fetchAttendanceData(attendanceDate, false);
+              }
+            } catch (err) {
+              Alert.alert('Error', err.response?.data?.error || 'Failed to mark all staff');
+              setAttendanceLoading(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleOpenStaffHistory = (staff) => {
+    setSelectedStaffForHistory(staff);
+    const initialMonth = attendanceDate.substring(0, 7);
+    setHistoryMonth(initialMonth);
+    setHistoryModalVisible(true);
+    fetchStaffHistory(staff.staffId || staff._id, initialMonth);
+  };
+
+  const fetchStaffHistory = async (userId, month) => {
+    setStaffHistoryLoading(true);
+    try {
+      const res = await apiClient.get(`/admin/attendance/history/${userId}?month=${month}`);
+      if (res.data.success) {
+        setStaffHistoryData(res.data.data);
+      }
+    } catch (err) {
+      Alert.alert('History Error', err.response?.data?.error || 'Failed to load staff history');
+    } finally {
+      setStaffHistoryLoading(false);
+    }
+  };
+
+  const handleHistoryMonthChange = (delta) => {
+    if (!historyMonth) return;
+    const [y, m] = historyMonth.split('-').map(Number);
+    const d = new Date(y, m - 1 + delta, 1);
+    const newMonthStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    setHistoryMonth(newMonthStr);
+    if (selectedStaffForHistory) {
+      fetchStaffHistory(selectedStaffForHistory.staffId || selectedStaffForHistory._id, newMonthStr);
+    }
+  };
+
+  const handleOpenNoteModal = (staffItem) => {
+    setEditingStaffNote(staffItem);
+    setNoteInputText(staffItem.attendance?.notes || '');
+    setNoteModalVisible(true);
+  };
+
+  const handleSaveStaffNote = async () => {
+    if (!editingStaffNote) return;
+    try {
+      const currentStatus = editingStaffNote.attendance?.status || 'Present';
+      const res = await apiClient.post('/admin/attendance/mark', {
+        userId: editingStaffNote.staffId,
+        date: attendanceDate,
+        status: currentStatus,
+        notes: noteInputText.trim(),
+      });
+      if (res.data.success) {
+        setNoteModalVisible(false);
+        fetchAttendanceData(attendanceDate, true);
+      }
+    } catch (err) {
+      Alert.alert('Error', err.response?.data?.error || 'Failed to save note');
+    }
+  };
+
   const activeKitchenOrders = orders.filter((o) =>
     ['Pending', 'Accepted', 'Ready'].includes(o.status)
   );
@@ -359,12 +598,18 @@ const AdminDashboard = () => {
             { key: 'orders', label: `🧾 Tickets (${activeKitchenOrders.length})` },
             { key: 'menu', label: '🍲 Catalog' },
             { key: 'staff', label: '👥 Personnel' },
+            { key: 'attendance', label: '📋 Attendance' },
             { key: 'tables', label: '🪑 Floor' },
           ].map((tab) => (
             <TouchableOpacity
               key={tab.key}
               style={[styles.tabItem, activeTab === tab.key && styles.tabItemActive]}
-              onPress={() => setActiveTab(tab.key)}
+              onPress={() => {
+                setActiveTab(tab.key);
+                if (tab.key === 'attendance') {
+                  fetchAttendanceData(attendanceDateRef.current);
+                }
+              }}
               activeOpacity={0.75}
             >
               <Text
@@ -753,6 +998,349 @@ const AdminDashboard = () => {
                 </View>
               </View>
             )}
+
+            {/* TAB 6: STAFF ATTENDANCE MANAGEMENT */}
+            {activeTab === 'attendance' && (
+              <View style={styles.tabContent}>
+                {/* Top Section Bar */}
+                <View style={styles.sectionTopBar}>
+                  <View>
+                    <Text style={styles.sectionHeader}>Staff Attendance</Text>
+                    <Text style={styles.sectionSubtitle}>
+                      Exclusively managed by Admin • Daily Roster
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.markAllPresentBtn}
+                    onPress={handleMarkAllPresent}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.markAllPresentBtnText}>⚡ Mark All Present</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Date Navigator Bar */}
+                <View style={styles.dateNavCard}>
+                  <TouchableOpacity
+                    style={styles.dateNavArrowBtn}
+                    onPress={() => handleDateChange(-1)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.dateNavArrowText}>◀</Text>
+                  </TouchableOpacity>
+
+                  <View style={styles.dateNavCenter}>
+                    <Text style={styles.dateNavMainText}>
+                      {formatDisplayDate(attendanceDate)}
+                    </Text>
+                    <View style={styles.dateNavTagRow}>
+                      {attendanceDate === getLocalDateString() ? (
+                        <View style={styles.todayBadge}>
+                          <Text style={styles.todayBadgeText}>⭐ Today</Text>
+                        </View>
+                      ) : (
+                        <TouchableOpacity
+                          style={styles.jumpTodayBtn}
+                          onPress={handleSetTodayDate}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.jumpTodayText}>Jump to Today</Text>
+                        </TouchableOpacity>
+                      )}
+                      <Text style={styles.dateNavRawText}>{attendanceDate}</Text>
+                    </View>
+                  </View>
+
+                  <TouchableOpacity
+                    style={styles.dateNavArrowBtn}
+                    onPress={() => handleDateChange(1)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.dateNavArrowText}>▶</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Daily Attendance KPI Summary Card */}
+                {attendanceData?.stats && (
+                  <View style={styles.attendanceKpiCard}>
+                    <View style={styles.attendanceKpiTop}>
+                      <View>
+                        <Text style={styles.attendanceKpiLabel}>DAY ATTENDANCE RATE</Text>
+                        <Text style={styles.attendanceKpiValue}>
+                          {attendanceData.stats.attendanceRate}%
+                        </Text>
+                      </View>
+                      <View style={styles.attendanceKpiStaffCount}>
+                        <Text style={styles.attendanceKpiStaffText}>
+                          {attendanceData.stats.presentCount +
+                            attendanceData.stats.halfDayCount * 0.5}{' '}
+                          / {attendanceData.stats.totalStaff} On Duty
+                        </Text>
+                      </View>
+                    </View>
+
+                    <LuxuryProgressBar
+                      progress={attendanceData.stats.attendanceRate / 100}
+                      height={6}
+                    />
+
+                    {/* Breakdown Counter Pills */}
+                    <View style={styles.kpiCountersRow}>
+                      <View style={[styles.kpiCounterPill, styles.kpiPresent]}>
+                        <Text style={styles.kpiCounterNumber}>
+                          {attendanceData.stats.presentCount}
+                        </Text>
+                        <Text style={styles.kpiCounterLabel}>Present</Text>
+                      </View>
+
+                      <View style={[styles.kpiCounterPill, styles.kpiHalfDay]}>
+                        <Text style={styles.kpiCounterNumber}>
+                          {attendanceData.stats.halfDayCount}
+                        </Text>
+                        <Text style={styles.kpiCounterLabel}>Half-Day</Text>
+                      </View>
+
+                      <View style={[styles.kpiCounterPill, styles.kpiAbsent]}>
+                        <Text style={styles.kpiCounterNumber}>
+                          {attendanceData.stats.absentCount}
+                        </Text>
+                        <Text style={styles.kpiCounterLabel}>Absent</Text>
+                      </View>
+
+                      <View style={[styles.kpiCounterPill, styles.kpiLeave]}>
+                        <Text style={styles.kpiCounterNumber}>
+                          {attendanceData.stats.leaveCount}
+                        </Text>
+                        <Text style={styles.kpiCounterLabel}>Leave</Text>
+                      </View>
+
+                      <View style={[styles.kpiCounterPill, styles.kpiUnmarked]}>
+                        <Text style={styles.kpiCounterNumber}>
+                          {attendanceData.stats.unmarkedCount}
+                        </Text>
+                        <Text style={styles.kpiCounterLabel}>Pending</Text>
+                      </View>
+                    </View>
+                  </View>
+                )}
+
+                {/* Staff Roster Cards */}
+                {attendanceLoading && !attendanceData ? (
+                  <View style={styles.loaderCenter}>
+                    <ActivityIndicator size="small" color={colors.primary} />
+                    <Text style={styles.loaderText}>Loading attendance roster...</Text>
+                  </View>
+                ) : attendanceData?.roster && attendanceData.roster.length > 0 ? (
+                  attendanceData.roster.map((staff) => {
+                    const status = staff.attendance?.status || 'Not Marked';
+                    return (
+                      <View key={staff.staffId} style={styles.attendanceCard}>
+                        {/* Header: Avatar, Name, Role, Current Status */}
+                        <View style={styles.attendanceCardHeader}>
+                          <View style={styles.attendanceCardLeft}>
+                            <View style={styles.attendanceAvatar}>
+                              <Text style={styles.attendanceAvatarText}>
+                                {staff.name.charAt(0).toUpperCase()}
+                              </Text>
+                            </View>
+                            <View>
+                              <Text style={styles.attendanceStaffName}>{staff.name}</Text>
+                              <View style={styles.roleBadgeRow}>
+                                <View
+                                  style={[
+                                    styles.staffRolePill,
+                                    staff.role === 'Waiter' && styles.roleWaiter,
+                                    staff.role === 'Cook' && styles.roleCook,
+                                    staff.role === 'Cleaner' && styles.roleCleaner,
+                                  ]}
+                                >
+                                  <Text
+                                    style={[
+                                      styles.staffRolePillText,
+                                      staff.role === 'Waiter' && styles.roleWaiterText,
+                                      staff.role === 'Cook' && styles.roleCookText,
+                                      staff.role === 'Cleaner' && styles.roleCleanerText,
+                                    ]}
+                                  >
+                                    {staff.role}
+                                  </Text>
+                                </View>
+                              </View>
+                            </View>
+                          </View>
+
+                          {/* Status Badge */}
+                          <View
+                            style={[
+                              styles.attStatusPill,
+                              status === 'Present' && styles.attPresentPill,
+                              status === 'Half-Day' && styles.attHalfDayPill,
+                              status === 'Absent' && styles.attAbsentPill,
+                              status === 'On Leave' && styles.attLeavePill,
+                              status === 'Not Marked' && styles.attPendingPill,
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.attStatusText,
+                                status === 'Present' && styles.attPresentText,
+                                status === 'Half-Day' && styles.attHalfDayText,
+                                status === 'Absent' && styles.attAbsentText,
+                                status === 'On Leave' && styles.attLeaveText,
+                                status === 'Not Marked' && styles.attPendingText,
+                              ]}
+                            >
+                              {status === 'Present' && '✓ Present'}
+                              {status === 'Half-Day' && '½ Half-Day'}
+                              {status === 'Absent' && '✕ Absent'}
+                              {status === 'On Leave' && '🌴 On Leave'}
+                              {status === 'Not Marked' && '⏳ Pending'}
+                            </Text>
+                          </View>
+                        </View>
+
+                        {/* 4 Single-Tap Status Action Buttons */}
+                        <View style={styles.statusActionBtnRow}>
+                          <TouchableOpacity
+                            style={[
+                              styles.statusActionBtn,
+                              styles.btnPresent,
+                              status === 'Present' && styles.btnPresentActive,
+                            ]}
+                            onPress={() =>
+                              handleMarkStaff(
+                                staff.staffId,
+                                'Present',
+                                staff.attendance?.notes || ''
+                              )
+                            }
+                            activeOpacity={0.8}
+                          >
+                            <Text
+                              style={[
+                                styles.statusActionBtnText,
+                                styles.btnPresentText,
+                                status === 'Present' && styles.btnActiveText,
+                              ]}
+                            >
+                              ✓ Present
+                            </Text>
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            style={[
+                              styles.statusActionBtn,
+                              styles.btnHalfDay,
+                              status === 'Half-Day' && styles.btnHalfDayActive,
+                            ]}
+                            onPress={() =>
+                              handleMarkStaff(
+                                staff.staffId,
+                                'Half-Day',
+                                staff.attendance?.notes || ''
+                              )
+                            }
+                            activeOpacity={0.8}
+                          >
+                            <Text
+                              style={[
+                                styles.statusActionBtnText,
+                                styles.btnHalfDayText,
+                                status === 'Half-Day' && styles.btnActiveText,
+                              ]}
+                            >
+                              ½ Half-Day
+                            </Text>
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            style={[
+                              styles.statusActionBtn,
+                              styles.btnAbsent,
+                              status === 'Absent' && styles.btnAbsentActive,
+                            ]}
+                            onPress={() =>
+                              handleMarkStaff(
+                                staff.staffId,
+                                'Absent',
+                                staff.attendance?.notes || ''
+                              )
+                            }
+                            activeOpacity={0.8}
+                          >
+                            <Text
+                              style={[
+                                styles.statusActionBtnText,
+                                styles.btnAbsentText,
+                                status === 'Absent' && styles.btnActiveText,
+                              ]}
+                            >
+                              ✕ Absent
+                            </Text>
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            style={[
+                              styles.statusActionBtn,
+                              styles.btnLeave,
+                              status === 'On Leave' && styles.btnLeaveActive,
+                            ]}
+                            onPress={() =>
+                              handleMarkStaff(
+                                staff.staffId,
+                                'On Leave',
+                                staff.attendance?.notes || ''
+                              )
+                            }
+                            activeOpacity={0.8}
+                          >
+                            <Text
+                              style={[
+                                styles.statusActionBtnText,
+                                styles.btnLeaveText,
+                                status === 'On Leave' && styles.btnActiveText,
+                              ]}
+                            >
+                              🌴 Leave
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+
+                        {/* Footer: Remark pill + Monthly History Button */}
+                        <View style={styles.attendanceCardFooter}>
+                          <TouchableOpacity
+                            style={styles.remarkBtn}
+                            onPress={() => handleOpenNoteModal(staff)}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={styles.remarkBtnText}>
+                              {staff.attendance?.notes
+                                ? `💬 "${staff.attendance.notes}"`
+                                : '💬 + Add Remark'}
+                            </Text>
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            style={styles.historyBtn}
+                            onPress={() => handleOpenStaffHistory(staff)}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={styles.historyBtnText}>📊 Monthly Log →</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    );
+                  })
+                ) : (
+                  <View style={styles.emptyAttendanceCard}>
+                    <Text style={styles.emptyAttendanceTitle}>No Personnel Listed</Text>
+                    <Text style={styles.emptyAttendanceSubtitle}>
+                      Add active staff in Personnel tab to manage daily attendance.
+                    </Text>
+                  </View>
+                )}
+              </View>
+            )}
           </ScrollView>
         )}
       </LuxuryPatternBackground>
@@ -934,6 +1522,233 @@ const AdminDashboard = () => {
                 onPress={handleCreateTable}
               >
                 <Text style={styles.modalSubmitText}>Save Table</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL: MONTHLY ATTENDANCE HISTORY */}
+      <Modal visible={historyModalVisible} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, styles.historyModalCard]}>
+            <View style={styles.historyModalHeader}>
+              <View style={styles.historyHeaderLeft}>
+                <View style={styles.historyStaffAvatar}>
+                  <Text style={styles.historyStaffAvatarText}>
+                    {selectedStaffForHistory?.name?.charAt(0).toUpperCase() || 'S'}
+                  </Text>
+                </View>
+                <View>
+                  <Text style={styles.modalCardTitle}>
+                    {selectedStaffForHistory?.name}'s Attendance
+                  </Text>
+                  <Text style={styles.historyStaffRole}>
+                    Role: {selectedStaffForHistory?.role || 'Staff'} • Monthly Log
+                  </Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                onPress={() => setHistoryModalVisible(false)}
+                style={styles.historyCloseBtn}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.historyCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <GoldDivider />
+
+            {/* Month Switcher Bar */}
+            <View style={styles.monthNavRow}>
+              <TouchableOpacity
+                style={styles.monthNavBtn}
+                onPress={() => handleHistoryMonthChange(-1)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.monthNavBtnText}>◀ Previous Month</Text>
+              </TouchableOpacity>
+              <Text style={styles.monthNavTitle}>
+                {formatDisplayMonth(historyMonth)}
+              </Text>
+              <TouchableOpacity
+                style={styles.monthNavBtn}
+                onPress={() => handleHistoryMonthChange(1)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.monthNavBtnText}>Next Month ▶</Text>
+              </TouchableOpacity>
+            </View>
+
+            {staffHistoryLoading ? (
+              <View style={styles.loaderCenter}>
+                <ActivityIndicator size="small" color={colors.primary} />
+                <Text style={styles.loaderText}>Loading monthly log...</Text>
+              </View>
+            ) : (
+              <>
+                {/* Monthly Summary Statistics */}
+                {staffHistoryData?.summary && (
+                  <View style={styles.monthSummaryBox}>
+                    <View style={styles.monthSummaryTop}>
+                      <Text style={styles.monthSummaryRateLabel}>
+                        MONTHLY ATTENDANCE RATE
+                      </Text>
+                      <Text style={styles.monthSummaryRateValue}>
+                        {staffHistoryData.summary.attendanceRate}%
+                      </Text>
+                    </View>
+                    <View style={styles.monthSummaryPills}>
+                      <View style={[styles.miniSummaryPill, styles.kpiPresent]}>
+                        <Text style={styles.miniSummaryText}>
+                          ✓ {staffHistoryData.summary.presentDays} Present
+                        </Text>
+                      </View>
+                      <View style={[styles.miniSummaryPill, styles.kpiHalfDay]}>
+                        <Text style={styles.miniSummaryText}>
+                          ½ {staffHistoryData.summary.halfDays} Half-Day
+                        </Text>
+                      </View>
+                      <View style={[styles.miniSummaryPill, styles.kpiAbsent]}>
+                        <Text style={styles.miniSummaryText}>
+                          ✕ {staffHistoryData.summary.absentDays} Absent
+                        </Text>
+                      </View>
+                      <View style={[styles.miniSummaryPill, styles.kpiLeave]}>
+                        <Text style={styles.miniSummaryText}>
+                          🌴 {staffHistoryData.summary.leaveDays} Leave
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                )}
+
+                {/* Chronological Log List */}
+                <ScrollView
+                  style={styles.historyLogScroll}
+                  showsVerticalScrollIndicator={false}
+                >
+                  {staffHistoryData?.history && staffHistoryData.history.length > 0 ? (
+                    staffHistoryData.history.map((record) => (
+                      <View key={record._id} style={styles.historyLogRow}>
+                        <View style={styles.historyLogDateCol}>
+                          <Text style={styles.historyLogDate}>
+                            {record.dateString}
+                          </Text>
+                          <Text style={styles.historyLogDay}>
+                            {formatDisplayDate(record.dateString).split(',')[0]}
+                          </Text>
+                        </View>
+
+                        <View style={styles.historyLogInfoCol}>
+                          <View
+                            style={[
+                              styles.attStatusPill,
+                              styles.attStatusPillSmall,
+                              record.status === 'Present' && styles.attPresentPill,
+                              record.status === 'Half-Day' && styles.attHalfDayPill,
+                              record.status === 'Absent' && styles.attAbsentPill,
+                              record.status === 'On Leave' && styles.attLeavePill,
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.attStatusText,
+                                styles.attStatusTextSmall,
+                                record.status === 'Present' && styles.attPresentText,
+                                record.status === 'Half-Day' && styles.attHalfDayText,
+                                record.status === 'Absent' && styles.attAbsentText,
+                                record.status === 'On Leave' && styles.attLeaveText,
+                              ]}
+                            >
+                              {record.status}
+                            </Text>
+                          </View>
+                          {record.notes ? (
+                            <Text style={styles.historyLogNotes}>
+                              💬 {record.notes}
+                            </Text>
+                          ) : null}
+                        </View>
+                      </View>
+                    ))
+                  ) : (
+                    <View style={styles.emptyHistoryBox}>
+                      <Text style={styles.emptyHistoryText}>
+                        No attendance records for {formatDisplayMonth(historyMonth)}.
+                      </Text>
+                    </View>
+                  )}
+                </ScrollView>
+              </>
+            )}
+
+            <TouchableOpacity
+              style={[styles.modalSubmitBtn, { marginTop: 14 }]}
+              onPress={() => setHistoryModalVisible(false)}
+            >
+              <Text style={styles.modalSubmitText}>Close History</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL: ATTENDANCE REMARK / NOTE */}
+      <Modal visible={noteModalVisible} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalCardTitle}>Attendance Remark</Text>
+            <Text style={styles.noteModalSubtitle}>
+              For {editingStaffNote?.name} on {formatDisplayDate(attendanceDate)}
+            </Text>
+            <GoldDivider />
+
+            <Text style={styles.inputLabel}>Quick Presets:</Text>
+            <View style={styles.presetChipsRow}>
+              {[
+                'Approved Leave',
+                'Sick / Medical',
+                'Half Day (Morning)',
+                'Half Day (Evening)',
+                'Late Arrival',
+                'Family Emergency',
+              ].map((preset) => (
+                <TouchableOpacity
+                  key={preset}
+                  style={styles.presetChip}
+                  onPress={() => {
+                    setNoteInputText((prev) =>
+                      prev ? `${prev}, ${preset}` : preset
+                    );
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.presetChipText}>+ {preset}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <TextInput
+              style={[styles.formInput, { height: 75 }]}
+              placeholder="Enter reason or remark (e.g. Approved leave for personal work)..."
+              placeholderTextColor={colors.textMuted}
+              multiline
+              value={noteInputText}
+              onChangeText={setNoteInputText}
+            />
+
+            <View style={styles.modalBtnRow}>
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                onPress={() => setNoteModalVisible(false)}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalSubmitBtn}
+                onPress={handleSaveStaffNote}
+              >
+                <Text style={styles.modalSubmitText}>Save Remark</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1679,6 +2494,611 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontWeight: '900',
     fontSize: 14,
+  },
+  /* Attendance Management Styles */
+  markAllPresentBtn: {
+    backgroundColor: colors.primaryLight,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 10,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  markAllPresentBtnText: {
+    color: colors.primaryDark,
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  dateNavCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 2,
+    borderColor: colors.cardBorderStrong,
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: 16,
+    shadowColor: colors.shadowColor,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  dateNavArrowBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1.5,
+    borderColor: colors.cardBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dateNavArrowText: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: colors.secondary,
+  },
+  dateNavCenter: {
+    alignItems: 'center',
+    gap: 3,
+  },
+  dateNavMainText: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: colors.secondary,
+  },
+  dateNavTagRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  todayBadge: {
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#FCD34D',
+  },
+  todayBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#B45309',
+  },
+  jumpTodayBtn: {
+    backgroundColor: colors.primaryLight,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  jumpTodayText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.primaryDark,
+  },
+  dateNavRawText: {
+    fontSize: 11,
+    color: colors.textMuted,
+    fontWeight: '600',
+  },
+  attendanceKpiCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: colors.cardBorderStrong,
+    padding: 14,
+    marginBottom: 16,
+    shadowColor: colors.shadowColor,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 2,
+    gap: 10,
+  },
+  attendanceKpiTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  attendanceKpiLabel: {
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 1,
+    color: colors.textMuted,
+  },
+  attendanceKpiValue: {
+    fontSize: 24,
+    fontWeight: '900',
+    color: colors.primaryDark,
+    marginTop: 2,
+  },
+  attendanceKpiStaffCount: {
+    backgroundColor: colors.primaryLight,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  attendanceKpiStaffText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.primaryDark,
+  },
+  kpiCountersRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 4,
+  },
+  kpiCounterPill: {
+    flex: 1,
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+    borderRadius: 8,
+    alignItems: 'center',
+    borderWidth: 1,
+  },
+  kpiCounterNumber: {
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  kpiCounterLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    marginTop: 1,
+  },
+  kpiPresent: {
+    backgroundColor: '#ECFDF5',
+    borderColor: '#10B981',
+  },
+  kpiHalfDay: {
+    backgroundColor: '#FFFBEB',
+    borderColor: '#F59E0B',
+  },
+  kpiAbsent: {
+    backgroundColor: '#FFF1F2',
+    borderColor: '#EF4444',
+  },
+  kpiLeave: {
+    backgroundColor: '#F3E8FF',
+    borderColor: '#A855F7',
+  },
+  kpiUnmarked: {
+    backgroundColor: '#F1F5F9',
+    borderColor: '#94A3B8',
+  },
+  attendanceCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: colors.cardBorderStrong,
+    padding: 14,
+    marginBottom: 12,
+    shadowColor: colors.shadowColor,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 2,
+    gap: 12,
+  },
+  attendanceCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  attendanceCardLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  attendanceAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: colors.primaryLight,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  attendanceAvatarText: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: colors.primaryDark,
+  },
+  attendanceStaffName: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: colors.secondary,
+  },
+  roleBadgeRow: {
+    flexDirection: 'row',
+    marginTop: 2,
+  },
+  staffRolePill: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  staffRolePillText: {
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  roleWaiter: {
+    backgroundColor: '#EFF6FF',
+    borderColor: '#93C5FD',
+  },
+  roleWaiterText: {
+    color: '#1D4ED8',
+  },
+  roleCook: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#FCD34D',
+  },
+  roleCookText: {
+    color: '#B45309',
+  },
+  roleCleaner: {
+    backgroundColor: '#F0FDF4',
+    borderColor: '#86EFAC',
+  },
+  roleCleanerText: {
+    color: '#15803D',
+  },
+  attStatusPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1.5,
+  },
+  attStatusPillSmall: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  attStatusText: {
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  attStatusTextSmall: {
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  attPresentPill: {
+    backgroundColor: '#ECFDF5',
+    borderColor: '#10B981',
+  },
+  attPresentText: {
+    color: '#059669',
+  },
+  attHalfDayPill: {
+    backgroundColor: '#FFFBEB',
+    borderColor: '#F59E0B',
+  },
+  attHalfDayText: {
+    color: '#D97706',
+  },
+  attAbsentPill: {
+    backgroundColor: '#FFF1F2',
+    borderColor: '#EF4444',
+  },
+  attAbsentText: {
+    color: '#E11D48',
+  },
+  attLeavePill: {
+    backgroundColor: '#F3E8FF',
+    borderColor: '#A855F7',
+  },
+  attLeaveText: {
+    color: '#7E22CE',
+  },
+  attPendingPill: {
+    backgroundColor: '#F1F5F9',
+    borderColor: '#94A3B8',
+  },
+  attPendingText: {
+    color: '#64748B',
+  },
+  statusActionBtnRow: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  statusActionBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    backgroundColor: '#FFFFFF',
+  },
+  statusActionBtnText: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  btnPresent: {
+    borderColor: '#10B981',
+  },
+  btnPresentText: {
+    color: '#059669',
+  },
+  btnPresentActive: {
+    backgroundColor: '#059669',
+    borderColor: '#047857',
+  },
+  btnHalfDay: {
+    borderColor: '#F59E0B',
+  },
+  btnHalfDayText: {
+    color: '#D97706',
+  },
+  btnHalfDayActive: {
+    backgroundColor: '#D97706',
+    borderColor: '#B45309',
+  },
+  btnAbsent: {
+    borderColor: '#EF4444',
+  },
+  btnAbsentText: {
+    color: '#E11D48',
+  },
+  btnAbsentActive: {
+    backgroundColor: '#E11D48',
+    borderColor: '#BE123C',
+  },
+  btnLeave: {
+    borderColor: '#A855F7',
+  },
+  btnLeaveText: {
+    color: '#7E22CE',
+  },
+  btnLeaveActive: {
+    backgroundColor: '#7E22CE',
+    borderColor: '#6B21A8',
+  },
+  btnActiveText: {
+    color: '#FFFFFF',
+  },
+  attendanceCardFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 4,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  remarkBtn: {
+    flex: 1,
+    paddingVertical: 4,
+  },
+  remarkBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textSecondary,
+    fontStyle: 'italic',
+  },
+  historyBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: colors.primaryLight,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  historyBtnText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.primaryDark,
+  },
+  emptyAttendanceCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: colors.cardBorderStrong,
+    padding: 24,
+    alignItems: 'center',
+    gap: 8,
+  },
+  emptyAttendanceTitle: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: colors.secondary,
+  },
+  emptyAttendanceSubtitle: {
+    fontSize: 13,
+    color: colors.textMuted,
+    textAlign: 'center',
+  },
+  /* History Modal Styles */
+  historyModalCard: {
+    maxHeight: '85%',
+  },
+  historyModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  historyHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  historyStaffAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.primaryLight,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  historyStaffAvatarText: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: colors.primaryDark,
+  },
+  historyStaffRole: {
+    fontSize: 11,
+    color: colors.textMuted,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  historyCloseBtn: {
+    padding: 6,
+  },
+  historyCloseText: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: colors.textMuted,
+  },
+  monthNavRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.cardBorder,
+    marginBottom: 10,
+  },
+  monthNavBtn: {
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+  },
+  monthNavBtnText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.secondary,
+  },
+  monthNavTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: colors.primaryDark,
+  },
+  monthSummaryBox: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    padding: 10,
+    marginBottom: 10,
+    gap: 8,
+  },
+  monthSummaryTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  monthSummaryRateLabel: {
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+    color: colors.textMuted,
+  },
+  monthSummaryRateValue: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: colors.primaryDark,
+  },
+  monthSummaryPills: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  miniSummaryPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  miniSummaryText: {
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  historyLogScroll: {
+    maxHeight: 220,
+  },
+  historyLogRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  historyLogDateCol: {
+    gap: 2,
+  },
+  historyLogDate: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.secondary,
+  },
+  historyLogDay: {
+    fontSize: 10,
+    color: colors.textMuted,
+    fontWeight: '600',
+  },
+  historyLogInfoCol: {
+    alignItems: 'flex-end',
+    gap: 4,
+  },
+  historyLogNotes: {
+    fontSize: 10,
+    fontStyle: 'italic',
+    color: colors.textSecondary,
+    maxWidth: 180,
+  },
+  emptyHistoryBox: {
+    paddingVertical: 24,
+    alignItems: 'center',
+  },
+  emptyHistoryText: {
+    fontSize: 12,
+    color: colors.textMuted,
+    fontStyle: 'italic',
+  },
+  /* Note Modal Presets */
+  noteModalSubtitle: {
+    fontSize: 12,
+    color: colors.textMuted,
+    marginTop: 2,
+    marginBottom: 6,
+  },
+  presetChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 10,
+  },
+  presetChip: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: colors.cardBorderStrong,
+    borderRadius: 14,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+  },
+  presetChipText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.secondary,
   },
 });
 
