@@ -575,8 +575,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '900',
   },
-    fontWeight: '800',
-  },
   notesPill: {
     backgroundColor: '#FEF3C7',
     borderWidth: 1.5,
