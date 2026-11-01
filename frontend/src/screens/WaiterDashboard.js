@@ -760,10 +760,25 @@ const WaiterDashboard = () => {
                                   </Text>
                                 ) : null}
                               </View>
-                              <View style={styles.dispatchedLockBadge}>
-                                <Text style={styles.dispatchedLockBadgeText}>
-                                  {item.quantity}× Sent
-                                </Text>
+                              <View style={styles.dispatchedRightActions}>
+                                <View style={styles.dispatchedLockBadge}>
+                                  <Text style={styles.dispatchedLockBadgeText}>
+                                    {item.quantity}× Sent
+                                  </Text>
+                                </View>
+                                <TouchableOpacity
+                                  style={styles.reorderPill}
+                                  onPress={() =>
+                                    addToCart({
+                                      _id: item.menuItemId?._id || item.menuItemId,
+                                      name: item.name,
+                                      price: item.price,
+                                    })
+                                  }
+                                  activeOpacity={0.7}
+                                >
+                                  <Text style={styles.reorderPillText}>+ Order More</Text>
+                                </TouchableOpacity>
                               </View>
                             </View>
                           ))}
@@ -1762,6 +1777,23 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '800',
     color: '#4B5563',
+  },
+  dispatchedRightActions: {
+    alignItems: 'flex-end',
+    gap: 6,
+  },
+  reorderPill: {
+    backgroundColor: colors.primaryLight,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  reorderPillText: {
+    color: colors.primaryDark,
+    fontSize: 11,
+    fontWeight: '900',
   },
   addCoursesPromptBox: {
     backgroundColor: '#FFFBEB',
