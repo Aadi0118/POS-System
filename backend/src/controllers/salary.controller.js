@@ -24,9 +24,22 @@ const calculateStaffMonthSalary = async (user, month) => {
   const totalDaysInMonth = new Date(year, monthNum, 0).getDate();
 
   const baseSalary = user.baseSalary || 0;
+  const pfEnabled = typeof user.pfEnabled === 'boolean' ? user.pfEnabled : true;
+  const pfEmployeePercentage = user.pfPercentage || 12;
+  const pfEmployerPercentage = user.employerPfPercentage || 12;
+
+  const totalMonthlySalary = baseSalary;
+  const monthlyEmpPf = pfEnabled ? Math.round(totalMonthlySalary * (pfEmployeePercentage / 100)) : 0;
+  const monthlyEmprPf = pfEnabled ? Math.round(totalMonthlySalary * (pfEmployerPercentage / 100)) : 0;
+  const monthlyNetSalary = Math.max(0, totalMonthlySalary - monthlyEmpPf);
+
   const dailyRate =
     totalDaysInMonth > 0
       ? Math.round((baseSalary / totalDaysInMonth) * 100) / 100 : 0;
+  const dailyTotalSalary = dailyRate;
+  const dailyNetSalary = totalDaysInMonth > 0 ? Math.round((monthlyNetSalary / totalDaysInMonth) * 100) / 100 : 0;
+  const dailyEmpPf = totalDaysInMonth > 0 ? Math.round((monthlyEmpPf / totalDaysInMonth) * 100) / 100 : 0;
+  const dailyEmprPf = totalDaysInMonth > 0 ? Math.round((monthlyEmprPf / totalDaysInMonth) * 100) / 100 : 0;
   
 
   // Fetch all attendance records for this employee in this month
@@ -106,6 +119,10 @@ const calculateStaffMonthSalary = async (user, month) => {
       dayOfWeek,
       status,
       dailyRate,
+      dailyTotalSalary,
+      dailyNetSalary,
+      dailyEmpPf,
+      dailyEmprPf,
       earnedAmount: Math.round(earnedAmount * 100) / 100,
       notes,
     });
@@ -125,9 +142,6 @@ const calculateStaffMonthSalary = async (user, month) => {
   const totalAdvance = advances.reduce((sum, a) => sum + (a.amount || 0), 0);
 
   // Deductions: Provident Fund (PF)
-  const pfEnabled = Boolean(user.pfEnabled);
-  const pfEmployeePercentage = user.pfPercentage || 12;
-  const pfEmployerPercentage = user.employerPfPercentage || 12;
   const pfEmployeeDeduction = pfEnabled ? Math.round(grossEarned * (pfEmployeePercentage / 100)) : 0;
   const pfEmployerContribution = pfEnabled ? Math.round(grossEarned * (pfEmployerPercentage / 100)) : 0;
   const totalPfFund = pfEmployeeDeduction + pfEmployerContribution;
@@ -163,8 +177,19 @@ const calculateStaffMonthSalary = async (user, month) => {
       employerPfPercentage,
     },
     month,
+    monthlySalary: {
+      totalSalary: totalMonthlySalary,
+      netSalary: monthlyNetSalary,
+      pfEmployee: monthlyEmpPf,
+      pfEmployer: monthlyEmprPf,
+      totalPfFund: monthlyEmpPf + monthlyEmprPf,
+    },
     totalDaysInMonth,
     dailyRate,
+    dailyTotalSalary,
+    dailyNetSalary,
+    dailyEmpPf,
+    dailyEmprPf,
     presentDays,
     halfDays,
     absentDays,

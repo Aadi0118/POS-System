@@ -5,13 +5,42 @@
  * and elegant staff identity badge with visible luxury borders.
  */
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
 import { useAuth } from '../context/AuthContext';
+import { getSecureItem } from '../utils/secureStore';
+import StaffSalaryModal from './StaffSalaryModal';
 import colors from '../theme/colors';
 
 const Header = ({ title, subtitle }) => {
   const { user, logout } = useAuth();
+  const [salaryModalVisible, setSalaryModalVisible] = useState(false);
+  const [effectiveUser, setEffectiveUser] = useState(user);
+
+  useEffect(() => {
+    let isMounted = true;
+    const checkSalaryOverride = async () => {
+      if (!user) return;
+      try {
+        const raw = await getSecureItem('pos_staff_salary_overrides');
+        if (raw && isMounted) {
+          const overrides = JSON.parse(raw);
+          const userId = user.id || user._id;
+          if (overrides[userId]) {
+            setEffectiveUser({ ...user, ...overrides[userId] });
+            return;
+          }
+        }
+      } catch (_) {}
+      if (isMounted) setEffectiveUser(user);
+    };
+    checkSalaryOverride();
+    return () => { isMounted = false; };
+  }, [user]);
+
+  const userSalary = effectiveUser?.baseSalary || 0;
+  const pfEnabled = typeof effectiveUser?.pfEnabled === 'boolean' ? effectiveUser.pfEnabled : true;
+  const netSalary = pfEnabled ? Math.max(0, userSalary - Math.round(userSalary * 0.12)) : userSalary;
 
   return (
     <View style={styles.wrapper}>
@@ -46,20 +75,29 @@ const Header = ({ title, subtitle }) => {
 
         {/* Right Section: Staff Identity & Actions */}
         <View style={styles.rightSection}>
-          {user && (
-            <View style={styles.userBadge}>
+          {effectiveUser && (
+            <TouchableOpacity
+              style={styles.userBadge}
+              onPress={() => setSalaryModalVisible(true)}
+              activeOpacity={0.7}
+            >
               <View style={styles.livePulseContainer}>
                 <View style={styles.livePulseDot} />
               </View>
               <View style={styles.userInfo}>
                 <Text style={styles.userName} numberOfLines={1} ellipsizeMode="tail">
-                  {user.name}
+                  {effectiveUser.name}
                 </Text>
                 <View style={styles.rolePill}>
-                  <Text style={styles.roleText}>{user.role}</Text>
+                  <Text style={styles.roleText}>{effectiveUser.role}</Text>
                 </View>
               </View>
-            </View>
+              {userSalary > 0 && (
+                <View style={styles.miniHeaderSalaryBadge}>
+                  <Text style={styles.miniHeaderSalaryText}>₹{netSalary.toLocaleString()}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
           )}
 
           <TouchableOpacity style={styles.logoutBtn} onPress={logout} activeOpacity={0.7}>
@@ -67,6 +105,13 @@ const Header = ({ title, subtitle }) => {
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* Staff Salary & Day-Wise Breakdown Statement Modal */}
+      <StaffSalaryModal
+        visible={salaryModalVisible}
+        onClose={() => setSalaryModalVisible(false)}
+        targetStaff={effectiveUser}
+      />
     </View>
   );
 };
@@ -171,7 +216,21 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1.5,
     borderColor: colors.cardBorderGold,
-    maxWidth: 140,
+    maxWidth: 220,
+  },
+  miniHeaderSalaryBadge: {
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#10B981',
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 4,
+    marginLeft: 5,
+  },
+  miniHeaderSalaryText: {
+    color: '#059669',
+    fontSize: 9.5,
+    fontWeight: '900',
   },
   livePulseContainer: {
     marginRight: 5,

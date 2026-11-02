@@ -29,6 +29,7 @@ import {
   LuxuryProgressBar,
 } from '../components/LuxuryPattern';
 import StaffSalaryModal from '../components/StaffSalaryModal';
+import StaffSalaryBanner from '../components/StaffSalaryBanner';
 import colors from '../theme/colors';
 
 const CleanerDashboard = () => {
@@ -135,6 +136,9 @@ const CleanerDashboard = () => {
             totalLabel={`${Math.round(cleanRatio * 100)}% Ready`}
           />
         </View>
+
+        {/* Staff Profile & Monthly Salary Banner */}
+        <StaffSalaryBanner />
 
         {loading ? (
           <View style={styles.loaderCenter}>

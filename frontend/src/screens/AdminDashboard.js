@@ -706,9 +706,116 @@ const AdminDashboard = () => {
     fetchPayrollData(newMonthStr);
   };
 
-  const handleOpenDayWiseModal = (staffPayroll) => {
-    setSelectedStaffForDayWise(staffPayroll);
+  const handleOpenDayWiseModal = async (target) => {
+    const staffUser = target?.user || target;
+    if (!staffUser) return;
+
+    let found = target?.dayWiseBreakdown ? target : payrollData?.staffPayrolls?.find((sp) => sp.user._id === staffUser._id);
+
+    if (!found || !found.dayWiseBreakdown) {
+      const bSalary = staffUser.baseSalary || 0;
+      const pfOn = typeof staffUser.pfEnabled === 'boolean' ? staffUser.pfEnabled : true;
+      const [yearStr, monthNumStr] = payrollMonth.split('-');
+      const y = parseInt(yearStr, 10);
+      const m = parseInt(monthNumStr, 10);
+      const totalDays = new Date(y, m, 0).getDate();
+
+      const dailyRate = totalDays > 0 ? Math.round((bSalary / totalDays) * 100) / 100 : 0;
+      const empPf = pfOn ? Math.round(bSalary * 0.12) : 0;
+      const emprPf = pfOn ? Math.round(bSalary * 0.12) : 0;
+      const totalPf = empPf + emprPf;
+      const netPayable = Math.max(0, bSalary - empPf);
+
+      const dailyNet = totalDays > 0 ? Math.round((netPayable / totalDays) * 100) / 100 : 0;
+      const dailyEmpPf = totalDays > 0 ? Math.round((empPf / totalDays) * 100) / 100 : 0;
+      const dailyEmprPf = totalDays > 0 ? Math.round((emprPf / totalDays) * 100) / 100 : 0;
+
+      const now = new Date();
+      const curY = now.getFullYear();
+      const curM = now.getMonth() + 1;
+      const curD = now.getDate();
+      const isCur = y === curY && m === curM;
+      const isFut = y > curY || (y === curY && m > curM);
+      const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+      const dayWiseBreakdown = [];
+      let workedDays = 0;
+      for (let d = 1; d <= totalDays; d++) {
+        const dateStr = `${payrollMonth}-${String(d).padStart(2, '0')}`;
+        const dt = new Date(y, m - 1, d);
+        const dayOfWeek = daysOfWeek[dt.getDay()];
+        const isUp = isFut || (isCur && d > curD);
+        const st = isUp ? 'Upcoming' : 'Present';
+        const earned = isUp ? 0 : dailyRate;
+        if (st === 'Present') workedDays++;
+
+        dayWiseBreakdown.push({
+          dateString: dateStr,
+          dayNumber: d,
+          dayOfWeek,
+          status: st,
+          dailyRate,
+          dailyTotalSalary: dailyRate,
+          dailyNetSalary: dailyNet,
+          dailyEmpPf,
+          dailyEmprPf,
+          earnedAmount: earned,
+          notes: '',
+        });
+      }
+
+      found = {
+        user: staffUser,
+        month: payrollMonth,
+        totalDaysInMonth: totalDays,
+        dailyRate,
+        dailyTotalSalary: dailyRate,
+        dailyNetSalary: dailyNet,
+        dailyEmpPf,
+        dailyEmprPf,
+        workedDays,
+        grossEarned: Math.round(dailyRate * workedDays * 100) / 100,
+        netPayable,
+        monthlySalary: {
+          totalSalary: bSalary,
+          netSalary: netPayable,
+          pfEmployee: empPf,
+          pfEmployer: emprPf,
+          totalPfFund: totalPf,
+        },
+        deductions: {
+          pfEnabled: pfOn,
+          pfPercentage: 12,
+          employerPfPercentage: 12,
+          pfDeduction: empPf,
+          pfEmployeeDeduction: empPf,
+          pfEmployerContribution: emprPf,
+          totalPfFund: totalPf,
+          totalAdvance: 0,
+          advancesList: [],
+          totalDeductions: empPf,
+        },
+        payout: {
+          paymentStatus: 'Unpaid',
+          amountPaid: 0,
+          paymentMode: 'Pending',
+          paidAt: null,
+          balanceRemaining: netPayable,
+          notes: '',
+        },
+        dayWiseBreakdown,
+      };
+    }
+
+    setSelectedStaffForDayWise(found);
     setDayWiseModalVisible(true);
+
+    try {
+      const res = await apiClient.get(`/salary/staff/${staffUser._id}?month=${payrollMonth}`);
+      if (res.data?.success && res.data.data) {
+        setSelectedStaffForDayWise(res.data.data);
+      }
+    } catch (_) {}
   };
 
   const handleOpenSalaryConfigModal = (target) => {
@@ -1354,47 +1461,116 @@ const AdminDashboard = () => {
                   </TouchableOpacity>
                 </View>
 
-                {staffList.map((staff) => (
-                  <View key={staff._id} style={styles.staffManageCard}>
-                    <View style={styles.staffManageLeft}>
-                      <View style={styles.staffAvatarBadge}>
-                        <Text style={styles.staffAvatarInitial}>
-                          {staff.name.charAt(0).toUpperCase()}
-                        </Text>
+                {staffList.map((staff) => {
+                  const baseSalary = staff.baseSalary || 0;
+                  const pfEnabled = typeof staff.pfEnabled === 'boolean' ? staff.pfEnabled : true;
+                  const empPf = pfEnabled ? Math.round(baseSalary * 0.12) : 0;
+                  const emprPf = pfEnabled ? Math.round(baseSalary * 0.12) : 0;
+                  const totalPf = empPf + emprPf;
+                  const netSalary = pfEnabled ? Math.max(0, baseSalary - empPf) : baseSalary;
+
+                  return (
+                    <View key={staff._id} style={styles.staffManageCard}>
+                      {/* Top Header: Identity & Status */}
+                      <View style={styles.staffProfileHeaderRow}>
+                        <View style={styles.staffManageLeft}>
+                          <View style={styles.staffAvatarBadge}>
+                            <Text style={styles.staffAvatarInitial}>
+                              {staff.name.charAt(0).toUpperCase()}
+                            </Text>
+                          </View>
+                          <View>
+                            <Text style={styles.staffNameText}>{staff.name}</Text>
+                            <View style={styles.roleBadgeRow}>
+                              <View style={[styles.staffRolePill, staff.role === 'Admin' && styles.roleAdmin]}>
+                                <Text style={styles.staffRolePillText}>{staff.role}</Text>
+                              </View>
+                              <Text style={[styles.staffStatusText, { color: staff.isActive ? colors.available : colors.dirty, marginLeft: 8 }]}>
+                                {staff.isActive ? '● Active In Service' : '○ Suspended'}
+                              </Text>
+                            </View>
+                          </View>
+                        </View>
+
+                        <TouchableOpacity
+                          style={[styles.statusToggleBtn, staff.isActive && styles.statusDeactivate]}
+                          onPress={() => handleToggleStaffStatus(staff)}
+                          activeOpacity={0.8}
+                        >
+                          <Text style={[styles.statusToggleText, staff.isActive && styles.statusDeactivateText]}>
+                            {staff.isActive ? 'Deactivate' : 'Activate'}
+                          </Text>
+                        </TouchableOpacity>
                       </View>
-                      <View>
-                        <Text style={styles.staffNameText}>{staff.name}</Text>
-                        <Text style={styles.staffRoleText}>Role: {staff.role}</Text>
-                        <Text style={{ fontSize: 11, color: colors.primaryDark, fontWeight: '700', marginTop: 2 }}>
-                          💼 Total: ₹{(staff.baseSalary || 0).toLocaleString()} • Net: ₹{Math.round((staff.baseSalary || 0) * (staff.pfEnabled ? 0.88 : 1)).toLocaleString()} {staff.pfEnabled ? '(PF 12%+12%)' : '(PF Off)'}
-                        </Text>
-                        <Text style={[styles.staffStatusText, { color: staff.isActive ? colors.available : colors.dirty }]}>
-                          {staff.isActive ? '● Active In Service' : '○ Suspended'}
-                        </Text>
+
+                      {/* Official Monthly Salary Box (Requested Format) */}
+                      <View style={styles.staffProfileSalaryBox}>
+                        <View style={styles.profileSalaryTitleRow}>
+                          <Text style={styles.profileSalaryTitle}>📜 MONTHLY SALARY STATEMENT</Text>
+                          <Text style={styles.profilePfBadge}>
+                            {pfEnabled ? '✓ PF Active: 12% + 12%' : '○ PF Disabled'}
+                          </Text>
+                        </View>
+
+                        {/* 1. Total salary */}
+                        <View style={styles.profileSalaryRow}>
+                          <Text style={styles.profileSalaryLabel}>Total salary:</Text>
+                          <Text style={styles.profileSalaryTotalVal}>₹{baseSalary.toLocaleString()}</Text>
+                        </View>
+
+                        {/* 2. Net salary */}
+                        <View style={styles.profileSalaryRowNet}>
+                          <View>
+                            <Text style={styles.profileSalaryNetLabel}>Net salary (after PF deduction):</Text>
+                            <Text style={styles.profileSalaryNetSub}>Take-home pay after employee PF</Text>
+                          </View>
+                          <Text style={styles.profileSalaryNetVal}>₹{netSalary.toLocaleString()}</Text>
+                        </View>
+
+                        {/* 3. PF given by employee */}
+                        <View style={styles.profileSalaryRow}>
+                          <Text style={styles.profileSalaryLabel}>PF given by employee (12% of total salary):</Text>
+                          <Text style={styles.profileSalaryEmpPf}>
+                            {pfEnabled ? `- ₹${empPf.toLocaleString()}` : '₹0'}
+                          </Text>
+                        </View>
+
+                        {/* 4. PF given by the employer */}
+                        <View style={styles.profileSalaryRow}>
+                          <Text style={styles.profileSalaryLabel}>PF given by the employer (12% of total salary):</Text>
+                          <Text style={styles.profileSalaryEmprPf}>
+                            {pfEnabled ? `+ ₹${emprPf.toLocaleString()}` : '₹0'}
+                          </Text>
+                        </View>
+
+                        {/* Total PF Fund Deposited */}
+                        <View style={styles.profileTotalPfRow}>
+                          <Text style={styles.profileTotalPfLabel}>Total PF Deposited (24% into fund):</Text>
+                          <Text style={styles.profileTotalPfVal}>₹{totalPf.toLocaleString()}</Text>
+                        </View>
+                      </View>
+
+                      {/* Action Controls: Configure Salary & Day-Wise Log */}
+                      <View style={styles.staffActionBtnRow}>
+                        <TouchableOpacity
+                          style={styles.staffConfigureBtn}
+                          onPress={() => handleOpenSalaryConfigModal(staff)}
+                          activeOpacity={0.8}
+                        >
+                          <Text style={styles.staffConfigureBtnText}>⚙️ Configure Salary & PF</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={styles.staffDayWiseBtn}
+                          onPress={() => handleOpenDayWiseModal(staff)}
+                          activeOpacity={0.8}
+                        >
+                          <Text style={styles.staffDayWiseBtnText}>📅 Day-Wise Salary Log →</Text>
+                        </TouchableOpacity>
                       </View>
                     </View>
-
-                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                      <TouchableOpacity
-                        style={styles.staffSalaryActionBtn}
-                        onPress={() => handleOpenSalaryConfigModal(staff)}
-                        activeOpacity={0.8}
-                      >
-                        <Text style={styles.staffSalaryActionBtnText}>💰 Salary & PF</Text>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        style={[styles.statusToggleBtn, staff.isActive && styles.statusDeactivate]}
-                        onPress={() => handleToggleStaffStatus(staff)}
-                        activeOpacity={0.8}
-                      >
-                        <Text style={[styles.statusToggleText, staff.isActive && styles.statusDeactivateText]}>
-                          {staff.isActive ? 'Deactivate' : 'Activate'}
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                ))}
+                  );
+                })}
               </View>
             )}
 
@@ -2738,6 +2914,9 @@ const AdminDashboard = () => {
                         "{item.notes}"
                       </Text>
                     ) : null}
+                    <Text style={{ fontSize: 9, color: colors.textMuted, marginTop: 2 }}>
+                      Day Total: ₹{item.dailyTotalSalary || item.dailyRate || selectedStaffForDayWise.dailyRate} • Net: ₹{item.dailyNetSalary || Math.round(((selectedStaffForDayWise?.netPayable || selectedStaffForDayWise?.user?.baseSalary || 0) / (selectedStaffForDayWise?.totalDaysInMonth || 30)) * 100) / 100}
+                    </Text>
                   </View>
 
                   <View style={styles.historyLogInfoCol}>
@@ -4965,6 +5144,148 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '900',
     color: '#92400E',
+  },
+  staffProfileHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  staffProfileSalaryBox: {
+    backgroundColor: '#FDFCF7',
+    borderWidth: 1.5,
+    borderColor: '#D4AF37',
+    borderRadius: 12,
+    padding: 10,
+    marginVertical: 6,
+    gap: 4,
+  },
+  profileSalaryTitleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingBottom: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3E8C8',
+    marginBottom: 2,
+  },
+  profileSalaryTitle: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#8A6D3B',
+    letterSpacing: 0.5,
+  },
+  profilePfBadge: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#059669',
+  },
+  profileSalaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 2,
+  },
+  profileSalaryLabel: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: colors.secondary,
+  },
+  profileSalaryTotalVal: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: colors.secondary,
+  },
+  profileSalaryRowNet: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#ECFDF5',
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    marginVertical: 3,
+  },
+  profileSalaryNetLabel: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#065F46',
+  },
+  profileSalaryNetSub: {
+    fontSize: 9,
+    color: '#047857',
+  },
+  profileSalaryNetVal: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: '#047857',
+  },
+  profileSalaryEmpPf: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.dirty,
+  },
+  profileSalaryEmprPf: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.available,
+  },
+  profileTotalPfRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#FEF9C3',
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#FDE047',
+    marginTop: 2,
+  },
+  profileTotalPfLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#854D0E',
+  },
+  profileTotalPfVal: {
+    fontSize: 11.5,
+    fontWeight: '900',
+    color: '#854D0E',
+  },
+  staffActionBtnRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 6,
+  },
+  staffConfigureBtn: {
+    flex: 1,
+    backgroundColor: '#FEF3C7',
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: '#F59E0B',
+    alignItems: 'center',
+  },
+  staffConfigureBtnText: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#92400E',
+  },
+  staffDayWiseBtn: {
+    flex: 1,
+    backgroundColor: '#F0FDF4',
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: '#10B981',
+    alignItems: 'center',
+  },
+  staffDayWiseBtnText: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#065F46',
   },
 });
 

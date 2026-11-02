@@ -14,7 +14,7 @@ const User = require('../models/User');
 const getStaffList = async (req, res, next) => {
   try {
     const staff = await User.find({ isActive: true })
-      .select('_id name role')
+      .select('_id name role baseSalary pfEnabled pfPercentage employerPfPercentage')
       .sort({ role: 1, name: 1 })
       .lean();
 
@@ -85,6 +85,11 @@ const login = async (req, res, next) => {
         id: user._id.toString(),
         name: user.name,
         role: user.role,
+        isActive: user.isActive,
+        baseSalary: user.baseSalary || 0,
+        pfEnabled: typeof user.pfEnabled === 'boolean' ? user.pfEnabled : true,
+        pfPercentage: user.pfPercentage || 12,
+        employerPfPercentage: user.employerPfPercentage || 12,
       },
     });
   } catch (error) {
@@ -97,7 +102,9 @@ const login = async (req, res, next) => {
  */
 const getMe = async (req, res, next) => {
   try {
-    const user = await User.findById(req.user.id).select('_id name role isActive');
+    const user = await User.findById(req.user.id).select(
+      '_id name role isActive baseSalary pfEnabled pfPercentage employerPfPercentage'
+    );
 
     if (!user) {
       return res.status(404).json({
@@ -113,6 +120,10 @@ const getMe = async (req, res, next) => {
         name: user.name,
         role: user.role,
         isActive: user.isActive,
+        baseSalary: user.baseSalary || 0,
+        pfEnabled: typeof user.pfEnabled === 'boolean' ? user.pfEnabled : true,
+        pfPercentage: user.pfPercentage || 12,
+        employerPfPercentage: user.employerPfPercentage || 12,
       },
     });
   } catch (error) {

@@ -33,6 +33,7 @@ import {
   MichelinStars,
 } from '../components/LuxuryPattern';
 import StaffSalaryModal from '../components/StaffSalaryModal';
+import StaffSalaryBanner from '../components/StaffSalaryBanner';
 import colors from '../theme/colors';
 
 const CATEGORY_ICONS = {
@@ -360,6 +361,9 @@ const WaiterDashboard = () => {
             </View>
           </View>
         </View>
+
+        {/* Staff Profile & Monthly Salary Banner */}
+        <StaffSalaryBanner />
 
         {loading ? (
           <View style={styles.loaderCenter}>

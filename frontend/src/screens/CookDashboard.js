@@ -31,6 +31,7 @@ import {
   GoldDivider,
 } from '../components/LuxuryPattern';
 import StaffSalaryModal from '../components/StaffSalaryModal';
+import StaffSalaryBanner from '../components/StaffSalaryBanner';
 import colors from '../theme/colors';
 
 const CookDashboard = () => {
@@ -167,6 +168,9 @@ const CookDashboard = () => {
             </View>
           </View>
         </View>
+
+        {/* Staff Profile & Monthly Salary Banner */}
+        <StaffSalaryBanner />
 
         {loading ? (
           <View style={styles.loaderCenter}>
