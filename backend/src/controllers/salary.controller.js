@@ -143,15 +143,15 @@ const calculateStaffMonthSalary = async (user, month) => {
 
   const totalAdvance = advances.reduce((sum, a) => sum + (a.amount || 0), 0);
 
-  // Deductions: Provident Fund (PF calculated on 40% of gross earned)
-  const grossPfWage = grossEarned * 0.40;
-  const pfEmployeeDeduction = pfEnabled ? Math.round(grossPfWage * (pfEmployeePercentage / 100)) : 0;
-  const pfEmployerContribution = pfEnabled ? Math.round(grossPfWage * (pfEmployerPercentage / 100)) : 0;
+  // Deductions: Provident Fund (Monthly basis: 12% on 40% of Base Monthly Salary)
+  const monthlyPfWageBasis = totalMonthlySalary * 0.40;
+  const pfEmployeeDeduction = pfEnabled ? Math.round(monthlyPfWageBasis * (pfEmployeePercentage / 100)) : 0;
+  const pfEmployerContribution = pfEnabled ? Math.round(monthlyPfWageBasis * (pfEmployerPercentage / 100)) : 0;
   const totalPfFund = pfEmployeeDeduction + pfEmployerContribution;
   const pfDeduction = pfEmployeeDeduction;
 
   const totalDeductions = totalAdvance + pfDeduction;
-  const netPayable = Math.max(0, Math.round(grossEarned - totalDeductions));
+  const netPayable = Math.max(0, Math.round(totalMonthlySalary - totalDeductions));
 
   // Payout settlement status
   const payout = await SalaryPayout.findOne({
@@ -202,7 +202,7 @@ const calculateStaffMonthSalary = async (user, month) => {
       pfEnabled,
       pfPercentage: pfEmployeePercentage,
       employerPfPercentage,
-      pfWageBasis: grossPfWage,
+      pfWageBasis: monthlyPfWageBasis,
       pfDeduction,
       pfEmployeeDeduction,
       pfEmployerContribution,

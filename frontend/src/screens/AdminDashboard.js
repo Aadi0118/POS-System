@@ -229,12 +229,12 @@ const AdminDashboard = () => {
                   const totalDays = sp.totalDaysInMonth || 30;
                   const dailyRate = Math.round((bSalary / totalDays) * 100) / 100;
                   const grossEarned = Math.round(dailyRate * worked * 100) / 100;
-                  // PF calculated on 40% of salary
-                  const pfWage = grossEarned * 0.40;
+                  // Monthly PF calculated on 40% of base monthly salary
+                  const pfWage = bSalary * 0.40;
                   const pfEmpDeduction = pfOn ? Math.round(pfWage * 0.12) : 0;
                   const pfEmprContribution = pfOn ? Math.round(pfWage * 0.12) : 0;
                   const totalAdvance = sp.deductions?.totalAdvance || 0;
-                  const netPayable = Math.max(0, grossEarned - pfEmpDeduction - totalAdvance);
+                  const netPayable = Math.max(0, bSalary - pfEmpDeduction - totalAdvance);
                   return {
                     ...sp,
                     dailyRate,
@@ -745,12 +745,12 @@ const AdminDashboard = () => {
                   const totalDays = sp.totalDaysInMonth || 30;
                   const dailyRate = Math.round((bSalary / totalDays) * 100) / 100;
                   const grossEarned = Math.round(dailyRate * worked * 100) / 100;
-                  // PF calculated on 40% of salary
-                  const pfWage = grossEarned * 0.40;
+                  // Monthly PF calculated on 40% of base monthly salary
+                  const pfWage = bSalary * 0.40;
                   const pfEmpDeduction = pfOn ? Math.round(pfWage * 0.12) : 0;
                   const pfEmprContribution = pfOn ? Math.round(pfWage * 0.12) : 0;
                   const totalAdvance = sp.deductions?.totalAdvance || 0;
-                  const netPayable = Math.max(0, grossEarned - pfEmpDeduction - totalAdvance);
+                  const netPayable = Math.max(0, bSalary - pfEmpDeduction - totalAdvance);
                   return {
                     ...sp,
                     dailyRate,
@@ -1054,11 +1054,11 @@ const AdminDashboard = () => {
             const totalDays = sp.totalDaysInMonth || 30;
             const dailyRate = Math.round((salaryVal / totalDays) * 100) / 100;
             const grossEarned = Math.round(dailyRate * worked * 100) / 100;
-            const pfWage = grossEarned * 0.40;
+            const pfWage = salaryVal * 0.40;
             const pfEmpDeduction = configPfEnabled ? Math.round(pfWage * 0.12) : 0;
             const pfEmprContribution = configPfEnabled ? Math.round(pfWage * 0.12) : 0;
             const totalAdvance = sp.deductions?.totalAdvance || 0;
-            const netPayable = Math.max(0, grossEarned - pfEmpDeduction - totalAdvance);
+            const netPayable = Math.max(0, salaryVal - pfEmpDeduction - totalAdvance);
             return {
               ...sp,
               dailyRate,
@@ -2279,7 +2279,7 @@ const AdminDashboard = () => {
                   <View style={styles.payrollKpiCard}>
                     <View style={styles.payrollKpiTop}>
                       <View>
-                        <Text style={styles.attendanceKpiLabel}>TOTAL NET PAYROLL DUE</Text>
+                        <Text style={styles.attendanceKpiLabel}>TOTAL NET MONTHLY PAYROLL</Text>
                         <Text style={styles.payrollKpiValue}>
                           ₹{payrollData.summary.totalNetPayable.toLocaleString()}
                         </Text>
@@ -2298,25 +2298,25 @@ const AdminDashboard = () => {
 
                     <View style={styles.payrollCountersRow}>
                       <View style={styles.payrollCounterItem}>
-                        <Text style={styles.payrollCounterLabel}>Base Salaries</Text>
+                        <Text style={styles.payrollCounterLabel}>Total Base Salary</Text>
                         <Text style={styles.payrollCounterValue}>
                           ₹{payrollData.summary.totalBaseSalaries.toLocaleString()}
                         </Text>
                       </View>
                       <View style={styles.payrollCounterItem}>
-                        <Text style={styles.payrollCounterLabel}>Gross Earned</Text>
-                        <Text style={[styles.payrollCounterValue, { color: colors.available }]}>
-                          ₹{payrollData.summary.totalGrossEarned.toLocaleString()}
+                        <Text style={styles.payrollCounterLabel}>40% PF Wage Basis</Text>
+                        <Text style={[styles.payrollCounterValue, { color: colors.primaryDark }]}>
+                          ₹{Math.round(payrollData.summary.totalBaseSalaries * 0.40).toLocaleString()}
                         </Text>
                       </View>
                       <View style={styles.payrollCounterItem}>
-                        <Text style={styles.payrollCounterLabel}>PF Deductions</Text>
+                        <Text style={styles.payrollCounterLabel}>12% PF Deductions</Text>
                         <Text style={[styles.payrollCounterValue, { color: colors.dirty }]}>
                           -₹{payrollData.summary.totalPfDeductions.toLocaleString()}
                         </Text>
                       </View>
                       <View style={styles.payrollCounterItem}>
-                        <Text style={styles.payrollCounterLabel}>Advances Given</Text>
+                        <Text style={styles.payrollCounterLabel}>Advances Deducted</Text>
                         <Text style={[styles.payrollCounterValue, { color: colors.occupied }]}>
                           -₹{payrollData.summary.totalAdvanceDeductions.toLocaleString()}
                         </Text>
@@ -2410,57 +2410,66 @@ const AdminDashboard = () => {
                         </TouchableOpacity>
                       </View>
 
-                      {/* Attendance Performance & Gross Earned */}
+                      {/* Monthly Salary Breakdown Row */}
                       <View style={styles.payrollPerformanceRow}>
                         <View style={styles.payrollPerfCol}>
-                          <Text style={styles.payrollPerfLabel}>Worked / Total</Text>
+                          <Text style={styles.payrollPerfLabel}>Base Monthly Pay</Text>
                           <Text style={styles.payrollPerfValue}>
-                            {staff.workedDays} / {staff.totalDaysInMonth} Days
+                            ₹{staff.user.baseSalary.toLocaleString()}
                           </Text>
                         </View>
                         <View style={styles.payrollPerfCol}>
-                          <Text style={styles.payrollPerfLabel}>Gross Earned</Text>
-                          <Text style={[styles.payrollPerfValue, { color: colors.available }]}>
-                            ₹{staff.grossEarned.toLocaleString()}
-                          </Text>
-                        </View>
-                        <View style={styles.payrollPerfCol}>
-                          <Text style={styles.payrollPerfLabel}>Net Payable</Text>
+                          <Text style={styles.payrollPerfLabel}>40% PF Wage Basis</Text>
                           <Text style={[styles.payrollPerfValue, { color: colors.primaryDark }]}>
+                            ₹{Math.round(staff.user.baseSalary * 0.40).toLocaleString()}
+                          </Text>
+                        </View>
+                        <View style={styles.payrollPerfCol}>
+                          <Text style={styles.payrollPerfLabel}>Net Monthly Pay</Text>
+                          <Text style={[styles.payrollPerfValue, { color: colors.available, fontWeight: '900' }]}>
                             ₹{staff.netPayable.toLocaleString()}
                           </Text>
                         </View>
                       </View>
 
-                      {/* Itemized Deductions Box */}
+                      {/* Itemized Deductions Box (Monthly Basis) */}
                       <View style={styles.payrollDeductionBox}>
                         <View style={styles.deductionItemRow}>
                           <Text style={styles.deductionItemLabel}>
-                            PF Wage Basis (40% of salary):
+                            Total Monthly Base Salary:
                           </Text>
-                          <Text style={[styles.deductionItemValue, { color: colors.primaryDark }]}>
-                            ₹{Math.round((staff.grossEarned || staff.user.baseSalary || 0) * 0.40).toLocaleString()}
+                          <Text style={[styles.deductionItemValue, { color: colors.secondary, fontWeight: '900' }]}>
+                            ₹{staff.user.baseSalary.toLocaleString()}
                           </Text>
                         </View>
 
                         <View style={styles.deductionItemRow}>
                           <Text style={styles.deductionItemLabel}>
-                            PF Employee (12% of 40% wage):
+                            PF Wage Basis (40% of Base Salary):
+                          </Text>
+                          <Text style={[styles.deductionItemValue, { color: colors.primaryDark, fontWeight: '800' }]}>
+                            ₹{Math.round(staff.user.baseSalary * 0.40).toLocaleString()}
+                          </Text>
+                        </View>
+
+                        <View style={styles.deductionItemRow}>
+                          <Text style={styles.deductionItemLabel}>
+                            PF Employee (12% of 40% wage basis):
                           </Text>
                           <Text style={[styles.deductionItemValue, { color: colors.dirty }]}>
                             {staff.deductions.pfEnabled
-                              ? `- ₹${(staff.deductions.pfEmployeeDeduction || staff.deductions.pfDeduction || Math.round((staff.grossEarned || staff.user.baseSalary || 0) * 0.40 * 0.12)).toLocaleString()}`
+                              ? `- ₹${(staff.deductions.pfEmployeeDeduction || staff.deductions.pfDeduction || Math.round(staff.user.baseSalary * 0.40 * 0.12)).toLocaleString()}`
                               : '₹0 (Inactive)'}
                           </Text>
                         </View>
 
                         <View style={styles.deductionItemRow}>
                           <Text style={styles.deductionItemLabel}>
-                            PF Employer (12% of 40% wage):
+                            PF Employer (12% of 40% wage basis):
                           </Text>
                           <Text style={[styles.deductionItemValue, { color: colors.available }]}>
                             {staff.deductions.pfEnabled
-                              ? `+ ₹${(staff.deductions.pfEmployerContribution || Math.round((staff.grossEarned || staff.user.baseSalary || 0) * 0.40 * 0.12)).toLocaleString()}`
+                              ? `+ ₹${(staff.deductions.pfEmployerContribution || Math.round(staff.user.baseSalary * 0.40 * 0.12)).toLocaleString()}`
                               : '₹0 (Inactive)'}
                           </Text>
                         </View>
@@ -2471,7 +2480,7 @@ const AdminDashboard = () => {
                           </Text>
                           <Text style={[styles.deductionItemValue, { color: '#B8860B', fontWeight: '800' }]}>
                             {staff.deductions.pfEnabled
-                              ? `₹${(staff.deductions.totalPfFund || Math.round((staff.grossEarned || staff.user.baseSalary || 0) * 0.40 * 0.24)).toLocaleString()}`
+                              ? `₹${(staff.deductions.totalPfFund || Math.round(staff.user.baseSalary * 0.40 * 0.24)).toLocaleString()}`
                               : '₹0'}
                           </Text>
                         </View>
@@ -2505,9 +2514,19 @@ const AdminDashboard = () => {
                         )}
 
                         <View style={styles.deductionTotalRow}>
-                          <Text style={styles.deductionTotalLabel}>Total Deductions:</Text>
-                          <Text style={styles.deductionTotalValue}>
-                            - ₹{staff.deductions.totalDeductions.toLocaleString()}
+                          <Text style={styles.deductionTotalLabel}>Net Monthly Take-Home Salary:</Text>
+                          <Text style={[styles.deductionTotalValue, { color: colors.available, fontSize: 14, fontWeight: '900' }]}>
+                            ₹{staff.netPayable.toLocaleString()}
+                          </Text>
+                        </View>
+
+                        {/* Attendance Worked Reference Footer */}
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, paddingTop: 6, borderTopWidth: 1, borderTopColor: '#E2E8F0' }}>
+                          <Text style={{ fontSize: 10, color: colors.textMuted }}>
+                            Attendance: {staff.workedDays}/{staff.totalDaysInMonth} days (Earned: ₹{staff.grossEarned.toLocaleString()})
+                          </Text>
+                          <Text style={{ fontSize: 10, color: colors.textMuted }}>
+                            Daily Rate: ₹{staff.dailyRate}/day
                           </Text>
                         </View>
                       </View>
