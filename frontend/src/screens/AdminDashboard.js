@@ -458,7 +458,70 @@ const AdminDashboard = () => {
     try {
       const res = await apiClient.get(`/admin/attendance/daily?date=${dateStr}`);
       if (res.data.success) {
-        setAttendanceData(res.data.data);
+        let attData = res.data.data;
+        try {
+          const overridesRaw = await getSecureItem('pos_staff_salary_overrides');
+          const overrides = overridesRaw ? JSON.parse(overridesRaw) : {};
+
+          if (attData?.roster) {
+            const [yStr, mStr] = dateStr.split('-');
+            const totalDaysInMonth = new Date(parseInt(yStr, 10), parseInt(mStr, 10), 0).getDate();
+
+            let totalIncurred = 0;
+            attData.roster = attData.roster.map((s) => {
+              const staffId = s.staffId || s._id;
+              const ov = overrides[staffId];
+              const stMember = staffList.find((item) => item._id === staffId);
+
+              const baseSalary = ov?.baseSalary ?? stMember?.baseSalary ?? s.baseSalary ?? 0;
+              const pfEnabled = ov
+                ? ov.pfEnabled
+                : (typeof stMember?.pfEnabled === 'boolean'
+                    ? stMember.pfEnabled
+                    : (typeof s.pfEnabled === 'boolean' ? s.pfEnabled : true));
+
+              const dailyRate = totalDaysInMonth > 0 ? Math.round((baseSalary / totalDaysInMonth) * 100) / 100 : 0;
+              const empPf = pfEnabled ? Math.round(baseSalary * 0.12) : 0;
+              const emprPf = pfEnabled ? Math.round(baseSalary * 0.12) : 0;
+              const dailyEmpPf = totalDaysInMonth > 0 ? Math.round((empPf / totalDaysInMonth) * 100) / 100 : 0;
+              const dailyEmprPf = totalDaysInMonth > 0 ? Math.round((emprPf / totalDaysInMonth) * 100) / 100 : 0;
+              const dailyNetSalary = Math.max(0, Math.round((dailyRate - dailyEmpPf) * 100) / 100);
+
+              const status = s.attendance?.status || s.status || 'Not Marked';
+              let earnedToday = 0;
+              if (status === 'Present') earnedToday = dailyRate;
+              else if (status === 'Half-Day') earnedToday = Math.round(dailyRate * 0.5 * 100) / 100;
+
+              totalIncurred += earnedToday;
+
+              return {
+                ...s,
+                staffId,
+                _id: staffId,
+                baseSalary,
+                pfEnabled,
+                dailyRate,
+                dailyTotalSalary: dailyRate,
+                dailyNetSalary,
+                dailyEmpPf,
+                dailyEmprPf,
+                earnedToday,
+                status,
+                attendance: {
+                  status,
+                  notes: s.attendance?.notes || s.notes || '',
+                  markedBy: s.attendance?.markedBy || s.markedBy || 'Admin',
+                  updatedAt: s.attendance?.updatedAt || s.updatedAt || null,
+                },
+              };
+            });
+
+            if (attData.stats) {
+              attData.stats.totalSalaryIncurredToday = Math.round(totalIncurred * 100) / 100;
+            }
+          }
+        } catch (_) {}
+        setAttendanceData(attData);
       }
     } catch (err) {
       console.error('[Attendance Fetch Error]', err);
@@ -487,10 +550,24 @@ const AdminDashboard = () => {
   const handleMarkStaff = async (staffId, status, currentNotes = '') => {
     // Optimistic UI update
     if (attendanceData && attendanceData.roster) {
+      const parts = attendanceDate.split('-').map(Number);
+      const totalDays = new Date(parts[0], parts[1], 0).getDate();
+      let totalSalaryIncurred = 0;
+
       const updatedRoster = attendanceData.roster.map((s) => {
-        if (s.staffId === staffId) {
+        const sid = s.staffId || s._id;
+        if (sid === staffId) {
+          const bSalary = s.baseSalary || 0;
+          const dRate = totalDays > 0 ? Math.round((bSalary / totalDays) * 100) / 100 : 0;
+          let earned = 0;
+          if (status === 'Present') earned = dRate;
+          else if (status === 'Half-Day') earned = Math.round(dRate * 0.5 * 100) / 100;
+
+          totalSalaryIncurred += earned;
           return {
             ...s,
+            status,
+            earnedToday: earned,
             attendance: {
               ...(s.attendance || {}),
               status,
@@ -498,6 +575,8 @@ const AdminDashboard = () => {
               markedAt: new Date().toISOString(),
             },
           };
+        } else {
+          totalSalaryIncurred += (s.earnedToday || 0);
         }
         return s;
       });
@@ -508,7 +587,7 @@ const AdminDashboard = () => {
       let leaveCount = 0;
       let unmarkedCount = 0;
       updatedRoster.forEach((r) => {
-        const st = r.attendance?.status;
+        const st = r.attendance?.status || r.status;
         if (st === 'Present') presentCount++;
         else if (st === 'Half-Day') halfDayCount++;
         else if (st === 'Absent') absentCount++;
@@ -532,6 +611,7 @@ const AdminDashboard = () => {
           leaveCount,
           unmarkedCount,
           attendanceRate,
+          totalSalaryIncurredToday: Math.round(totalSalaryIncurred * 100) / 100,
         },
       });
     }
@@ -707,115 +787,197 @@ const AdminDashboard = () => {
   };
 
   const handleOpenDayWiseModal = async (target) => {
-    const staffUser = target?.user || target;
-    if (!staffUser) return;
+    const staffId = target?.user?._id || target?._id || target?.staffId || target?.id;
+    if (!staffId && !target) return;
 
-    let found = target?.dayWiseBreakdown ? target : payrollData?.staffPayrolls?.find((sp) => sp.user._id === staffUser._id);
+    // Find full user details
+    const staffUser = staffList.find((s) => s._id === staffId) || target?.user || target;
 
-    if (!found || !found.dayWiseBreakdown) {
-      const bSalary = staffUser.baseSalary || 0;
-      const pfOn = typeof staffUser.pfEnabled === 'boolean' ? staffUser.pfEnabled : true;
-      const [yearStr, monthNumStr] = payrollMonth.split('-');
-      const y = parseInt(yearStr, 10);
-      const m = parseInt(monthNumStr, 10);
-      const totalDays = new Date(y, m, 0).getDate();
+    // Check if payrollData has existing dayWiseBreakdown for this staff
+    let found = target?.dayWiseBreakdown
+      ? target
+      : payrollData?.staffPayrolls?.find(
+          (sp) => sp.user?._id === staffId || sp.user?.staffId === staffId
+        );
 
-      const dailyRate = totalDays > 0 ? Math.round((bSalary / totalDays) * 100) / 100 : 0;
-      const empPf = pfOn ? Math.round(bSalary * 0.12) : 0;
-      const emprPf = pfOn ? Math.round(bSalary * 0.12) : 0;
-      const totalPf = empPf + emprPf;
-      const netPayable = Math.max(0, bSalary - empPf);
+    // Resolve salary overrides
+    let overrides = {};
+    try {
+      const raw = await getSecureItem('pos_staff_salary_overrides');
+      if (raw) overrides = JSON.parse(raw);
+    } catch (_) {}
+    const ov = overrides[staffId];
 
-      const dailyNet = totalDays > 0 ? Math.round((netPayable / totalDays) * 100) / 100 : 0;
-      const dailyEmpPf = totalDays > 0 ? Math.round((empPf / totalDays) * 100) / 100 : 0;
-      const dailyEmprPf = totalDays > 0 ? Math.round((emprPf / totalDays) * 100) / 100 : 0;
+    const bSalary = ov?.baseSalary ?? staffUser.baseSalary ?? 0;
+    const pfOn = ov
+      ? ov.pfEnabled
+      : typeof staffUser.pfEnabled === 'boolean'
+      ? staffUser.pfEnabled
+      : true;
+    const [yearStr, monthNumStr] = payrollMonth.split('-');
+    const y = parseInt(yearStr, 10);
+    const m = parseInt(monthNumStr, 10);
+    const totalDays = new Date(y, m, 0).getDate();
 
-      const now = new Date();
-      const curY = now.getFullYear();
-      const curM = now.getMonth() + 1;
-      const curD = now.getDate();
-      const isCur = y === curY && m === curM;
-      const isFut = y > curY || (y === curY && m > curM);
-      const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const dailyRate = totalDays > 0 ? Math.round((bSalary / totalDays) * 100) / 100 : 0;
+    const empPfMonthly = pfOn ? Math.round(bSalary * 0.12) : 0;
+    const emprPfMonthly = pfOn ? Math.round(bSalary * 0.12) : 0;
+    const totalPfMonthly = empPfMonthly + emprPfMonthly;
 
-      const dayWiseBreakdown = [];
-      let workedDays = 0;
-      for (let d = 1; d <= totalDays; d++) {
-        const dateStr = `${payrollMonth}-${String(d).padStart(2, '0')}`;
-        const dt = new Date(y, m - 1, d);
-        const dayOfWeek = daysOfWeek[dt.getDay()];
-        const isUp = isFut || (isCur && d > curD);
-        const st = isUp ? 'Upcoming' : 'Present';
-        const earned = isUp ? 0 : dailyRate;
-        if (st === 'Present') workedDays++;
+    const dailyEmpPf = totalDays > 0 ? Math.round((empPfMonthly / totalDays) * 100) / 100 : 0;
+    const dailyEmprPf = totalDays > 0 ? Math.round((emprPfMonthly / totalDays) * 100) / 100 : 0;
+    const dailyNet = Math.max(0, Math.round((dailyRate - dailyEmpPf) * 100) / 100);
 
-        dayWiseBreakdown.push({
-          dateString: dateStr,
-          dayNumber: d,
-          dayOfWeek,
-          status: st,
-          dailyRate,
-          dailyTotalSalary: dailyRate,
-          dailyNetSalary: dailyNet,
-          dailyEmpPf,
-          dailyEmprPf,
-          earnedAmount: earned,
-          notes: '',
+    // Fetch actual attendance records for this user for this month
+    let attRecordsMap = new Map();
+    try {
+      const attRes = await apiClient.get(`/admin/attendance/history/${staffId}?month=${payrollMonth}`);
+      if (attRes.data?.success && attRes.data.data?.history) {
+        attRes.data.data.history.forEach((rec) => {
+          attRecordsMap.set(rec.dateString, rec);
         });
       }
+    } catch (_) {}
 
-      found = {
-        user: staffUser,
-        month: payrollMonth,
-        totalDaysInMonth: totalDays,
+    const now = new Date();
+    const curY = now.getFullYear();
+    const curM = now.getMonth() + 1;
+    const curD = now.getDate();
+    const isCur = y === curY && m === curM;
+    const isFut = y > curY || (y === curY && m > curM);
+    const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+    const dayWiseBreakdown = [];
+    let workedDays = 0;
+    let grossEarned = 0;
+
+    for (let d = 1; d <= totalDays; d++) {
+      const dateStr = `${payrollMonth}-${String(d).padStart(2, '0')}`;
+      const dt = new Date(y, m - 1, d);
+      const dayOfWeek = daysOfWeek[dt.getDay()];
+      const isUp = isFut || (isCur && d > curD);
+
+      let st = 'Not Marked';
+      let earned = 0;
+      let notes = '';
+
+      if (isUp) {
+        st = 'Upcoming';
+        earned = 0;
+      } else if (attRecordsMap.has(dateStr)) {
+        const att = attRecordsMap.get(dateStr);
+        st = att.status;
+        notes = att.notes || '';
+        if (st === 'Present') {
+          earned = dailyRate;
+          workedDays += 1;
+        } else if (st === 'Half-Day') {
+          earned = Math.round(dailyRate * 0.5 * 100) / 100;
+          workedDays += 0.5;
+        } else if (st === 'Absent' || st === 'On Leave') {
+          earned = 0;
+        }
+      } else if (found?.dayWiseBreakdown) {
+        const existingDay = found.dayWiseBreakdown.find(
+          (item) => item.dateString === dateStr || item.dayNumber === d
+        );
+        if (existingDay) {
+          st = existingDay.status;
+          notes = existingDay.notes || '';
+          earned = existingDay.earnedAmount || 0;
+          if (st === 'Present') workedDays += 1;
+          else if (st === 'Half-Day') workedDays += 0.5;
+        }
+      }
+
+      grossEarned += earned;
+
+      dayWiseBreakdown.push({
+        dateString: dateStr,
+        dayNumber: d,
+        dayOfWeek,
+        status: st,
         dailyRate,
         dailyTotalSalary: dailyRate,
         dailyNetSalary: dailyNet,
         dailyEmpPf,
         dailyEmprPf,
-        workedDays,
-        grossEarned: Math.round(dailyRate * workedDays * 100) / 100,
-        netPayable,
-        monthlySalary: {
-          totalSalary: bSalary,
-          netSalary: netPayable,
-          pfEmployee: empPf,
-          pfEmployer: emprPf,
-          totalPfFund: totalPf,
-        },
-        deductions: {
-          pfEnabled: pfOn,
-          pfPercentage: 12,
-          employerPfPercentage: 12,
-          pfDeduction: empPf,
-          pfEmployeeDeduction: empPf,
-          pfEmployerContribution: emprPf,
-          totalPfFund: totalPf,
-          totalAdvance: 0,
-          advancesList: [],
-          totalDeductions: empPf,
-        },
-        payout: {
-          paymentStatus: 'Unpaid',
-          amountPaid: 0,
-          paymentMode: 'Pending',
-          paidAt: null,
-          balanceRemaining: netPayable,
-          notes: '',
-        },
-        dayWiseBreakdown,
-      };
+        earnedAmount: Math.round(earned * 100) / 100,
+        notes,
+      });
     }
 
-    setSelectedStaffForDayWise(found);
+    grossEarned = Math.round(grossEarned * 100) / 100;
+    const empPfDeduction = pfOn ? Math.round(grossEarned * 0.12) : 0;
+    const emprPfContrib = pfOn ? Math.round(grossEarned * 0.12) : 0;
+    const totalPfFund = empPfDeduction + emprPfContrib;
+    const totalAdvance = found?.deductions?.totalAdvance || 0;
+    const advancesList = found?.deductions?.advancesList || [];
+    const totalDeductions = empPfDeduction + totalAdvance;
+    const netPayable = Math.max(0, Math.round(grossEarned - totalDeductions));
+
+    const finalStatement = {
+      user: {
+        _id: staffId,
+        name: staffUser.name,
+        role: staffUser.role,
+        baseSalary: bSalary,
+        pfEnabled: pfOn,
+      },
+      month: payrollMonth,
+      totalDaysInMonth: totalDays,
+      dailyRate,
+      dailyTotalSalary: dailyRate,
+      dailyNetSalary: dailyNet,
+      dailyEmpPf,
+      dailyEmprPf,
+      workedDays,
+      grossEarned,
+      netPayable,
+      monthlySalary: {
+        totalSalary: bSalary,
+        netSalary: Math.max(0, bSalary - empPfMonthly),
+        pfEmployee: empPfMonthly,
+        pfEmployer: emprPfMonthly,
+        totalPfFund: totalPfMonthly,
+      },
+      deductions: {
+        pfEnabled: pfOn,
+        pfPercentage: 12,
+        employerPfPercentage: 12,
+        pfDeduction: empPfDeduction,
+        pfEmployeeDeduction: empPfDeduction,
+        pfEmployerContribution: emprPfContrib,
+        totalPfFund,
+        totalAdvance,
+        advancesList,
+        totalDeductions,
+      },
+      payout: found?.payout || {
+        paymentStatus: 'Unpaid',
+        amountPaid: 0,
+        paymentMode: 'Pending',
+        paidAt: null,
+        balanceRemaining: netPayable,
+        notes: '',
+      },
+      dayWiseBreakdown,
+    };
+
+    setSelectedStaffForDayWise(finalStatement);
     setDayWiseModalVisible(true);
 
     try {
-      const res = await apiClient.get(`/salary/staff/${staffUser._id}?month=${payrollMonth}`);
+      const res = await apiClient.get(`/salary/staff/${staffId}?month=${payrollMonth}`);
       if (res.data?.success && res.data.data) {
-        setSelectedStaffForDayWise(res.data.data);
+        const srv = res.data.data;
+        if (bSalary > 0 && srv.user) {
+          srv.user.baseSalary = bSalary;
+          srv.user.pfEnabled = pfOn;
+        }
+        setSelectedStaffForDayWise(srv);
       }
-    } catch (_) { }
+    } catch (_) {}
   };
 
   const handleOpenSalaryConfigModal = (target) => {
@@ -1726,6 +1888,20 @@ const AdminDashboard = () => {
                         <Text style={styles.kpiCounterLabel}>Pending</Text>
                       </View>
                     </View>
+
+                    {/* Day Salary / Wages Incurred KPI Banner */}
+                    <View style={styles.totalDayWagesBanner}>
+                      <View style={styles.totalDayWagesLeft}>
+                        <Text style={styles.totalDayWagesIcon}>💰</Text>
+                        <View>
+                          <Text style={styles.totalDayWagesLabel}>TODAY'S WAGES / SALARY INCURRED</Text>
+                          <Text style={styles.totalDayWagesSub}>Calculated strictly as per marked attendance</Text>
+                        </View>
+                      </View>
+                      <Text style={styles.totalDayWagesAmount}>
+                        ₹{(attendanceData.stats.totalSalaryIncurredToday || 0).toLocaleString()}
+                      </Text>
+                    </View>
                   </View>
                 )}
 
@@ -1737,7 +1913,7 @@ const AdminDashboard = () => {
                   </View>
                 ) : attendanceData?.roster && attendanceData.roster.length > 0 ? (
                   attendanceData.roster.map((staff) => {
-                    const status = staff.attendance?.status || 'Not Marked';
+                    const status = staff.attendance?.status || staff.status || 'Not Marked';
                     return (
                       <View key={staff.staffId} style={styles.attendanceCard}>
                         {/* Header: Avatar, Name, Role, Current Status */}
@@ -1816,7 +1992,7 @@ const AdminDashboard = () => {
                               handleMarkStaff(
                                 staff.staffId,
                                 'Present',
-                                staff.attendance?.notes || ''
+                                staff.attendance?.notes || staff.notes || ''
                               )
                             }
                             activeOpacity={0.8}
@@ -1842,7 +2018,7 @@ const AdminDashboard = () => {
                               handleMarkStaff(
                                 staff.staffId,
                                 'Half-Day',
-                                staff.attendance?.notes || ''
+                                staff.attendance?.notes || staff.notes || ''
                               )
                             }
                             activeOpacity={0.8}
@@ -1868,7 +2044,7 @@ const AdminDashboard = () => {
                               handleMarkStaff(
                                 staff.staffId,
                                 'Absent',
-                                staff.attendance?.notes || ''
+                                staff.attendance?.notes || staff.notes || ''
                               )
                             }
                             activeOpacity={0.8}
@@ -1894,7 +2070,7 @@ const AdminDashboard = () => {
                               handleMarkStaff(
                                 staff.staffId,
                                 'On Leave',
-                                staff.attendance?.notes || ''
+                                staff.attendance?.notes || staff.notes || ''
                               )
                             }
                             activeOpacity={0.8}
@@ -1911,6 +2087,75 @@ const AdminDashboard = () => {
                           </TouchableOpacity>
                         </View>
 
+                        {/* DAY-WISE SALARY AS PER ATTENDANCE BOX */}
+                        <View style={styles.daySalaryRosterBox}>
+                          <View style={styles.daySalaryHeaderRow}>
+                            <View style={styles.daySalaryTitleGroup}>
+                              <Text style={styles.daySalaryTitleLabel}>DAY-WISE SALARY (AS PER ATTENDANCE)</Text>
+                              <Text style={styles.daySalaryBaseText}>
+                                Base: ₹{(staff.baseSalary || 0).toLocaleString()} (₹{staff.dailyRate || 0}/day)
+                              </Text>
+                            </View>
+                            <View style={styles.dayEarnedBadgeGroup}>
+                              <Text style={styles.dayEarnedLabel}>TODAY'S EARNED</Text>
+                              <Text
+                                style={[
+                                  styles.dayEarnedValue,
+                                  status === 'Present' && styles.dayEarnedPresent,
+                                  status === 'Half-Day' && styles.dayEarnedHalfDay,
+                                  (status === 'Absent' || status === 'On Leave') && styles.dayEarnedZero,
+                                  status === 'Not Marked' && styles.dayEarnedPending,
+                                ]}
+                              >
+                                {status === 'Present' && `+ ₹${staff.dailyRate || 0}`}
+                                {status === 'Half-Day' && `+ ₹${Math.round((staff.dailyRate || 0) * 0.5 * 100) / 100}`}
+                                {status === 'Absent' && '₹0 (Absent)'}
+                                {status === 'On Leave' && '₹0 (On Leave)'}
+                                {status === 'Not Marked' && '⏳ Pending'}
+                              </Text>
+                            </View>
+                          </View>
+
+                          <View style={styles.daySalaryMetricsRow}>
+                            <View style={styles.daySalaryMetricItem}>
+                              <Text style={styles.daySalaryMetricSub}>Daily Rate</Text>
+                              <Text style={styles.daySalaryMetricVal}>₹{staff.dailyRate || 0}</Text>
+                            </View>
+                            <View style={styles.daySalaryMetricItem}>
+                              <Text style={styles.daySalaryMetricSub}>Daily Net (Take-Home)</Text>
+                              <Text style={[styles.daySalaryMetricVal, { color: colors.available }]}>
+                                ₹{staff.dailyNetSalary || staff.dailyRate || 0}
+                              </Text>
+                            </View>
+                            <View style={styles.daySalaryMetricItem}>
+                              <Text style={styles.daySalaryMetricSub}>Emp PF (12%)</Text>
+                              <Text style={[styles.daySalaryMetricVal, { color: colors.dirty }]}>
+                                {staff.pfEnabled ? `-₹${staff.dailyEmpPf || 0}` : '₹0'}
+                              </Text>
+                            </View>
+                            <View style={styles.daySalaryMetricItem}>
+                              <Text style={styles.daySalaryMetricSub}>Admin PF (12%)</Text>
+                              <Text style={[styles.daySalaryMetricVal, { color: colors.primaryDark }]}>
+                                {staff.pfEnabled ? `+₹${staff.dailyEmprPf || 0}` : '₹0'}
+                              </Text>
+                            </View>
+                          </View>
+
+                          {/* Direct Button to View Complete Calendar Day-Wise Salary Log */}
+                          <TouchableOpacity
+                            style={styles.viewDayWiseBreakdownBtn}
+                            onPress={() => {
+                              const fullStaff = staffList.find((s) => s._id === (staff.staffId || staff._id)) || staff;
+                              handleOpenDayWiseModal(fullStaff);
+                            }}
+                            activeOpacity={0.8}
+                          >
+                            <Text style={styles.viewDayWiseBreakdownText}>
+                              📅 View Day-Wise Salary Log ({formatDisplayMonth(attendanceDate.substring(0, 7))}) →
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+
                         {/* Footer: Remark pill + Monthly History Button */}
                         <View style={styles.attendanceCardFooter}>
                           <TouchableOpacity
@@ -1919,8 +2164,8 @@ const AdminDashboard = () => {
                             activeOpacity={0.7}
                           >
                             <Text style={styles.remarkBtnText}>
-                              {staff.attendance?.notes
-                                ? `💬 "${staff.attendance.notes}"`
+                              {(staff.attendance?.notes || staff.notes)
+                                ? `💬 "${staff.attendance?.notes || staff.notes}"`
                                 : '💬 + Add Remark'}
                             </Text>
                           </TouchableOpacity>
@@ -1930,7 +2175,7 @@ const AdminDashboard = () => {
                             onPress={() => handleOpenStaffHistory(staff)}
                             activeOpacity={0.7}
                           >
-                            <Text style={styles.historyBtnText}>📊 Monthly Log →</Text>
+                            <Text style={styles.historyBtnText}>📊 Attendance History →</Text>
                           </TouchableOpacity>
                         </View>
                       </View>
@@ -5316,6 +5561,132 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '900',
     color: '#065F46',
+  },
+  // Day-Wise Salary as per Attendance Styles
+  daySalaryRosterBox: {
+    backgroundColor: '#FAF7F0',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E6DCB8',
+    padding: 12,
+    marginTop: 10,
+    marginBottom: 6,
+  },
+  daySalaryHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EFE7CF',
+    paddingBottom: 6,
+  },
+  daySalaryTitleGroup: {
+    flex: 1,
+  },
+  daySalaryTitleLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#8C7335',
+    letterSpacing: 0.5,
+  },
+  daySalaryBaseText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primaryDark,
+    marginTop: 2,
+  },
+  dayEarnedBadgeGroup: {
+    alignItems: 'flex-end',
+  },
+  dayEarnedLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: colors.textMuted,
+  },
+  dayEarnedValue: {
+    fontSize: 13,
+    fontWeight: '900',
+    marginTop: 2,
+  },
+  dayEarnedPresent: {
+    color: colors.available,
+  },
+  dayEarnedHalfDay: {
+    color: '#D97706',
+  },
+  dayEarnedZero: {
+    color: colors.dirty,
+  },
+  dayEarnedPending: {
+    color: colors.textMuted,
+  },
+  daySalaryMetricsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  daySalaryMetricItem: {
+    flex: 1,
+  },
+  daySalaryMetricSub: {
+    fontSize: 9,
+    color: colors.textMuted,
+    fontWeight: '600',
+  },
+  daySalaryMetricVal: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.primaryDark,
+    marginTop: 1,
+  },
+  viewDayWiseBreakdownBtn: {
+    backgroundColor: colors.primaryDark,
+    borderRadius: 8,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  viewDayWiseBreakdownText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  totalDayWagesBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#F7F4E9',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E2D5A9',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginTop: 10,
+  },
+  totalDayWagesLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  totalDayWagesIcon: {
+    fontSize: 20,
+  },
+  totalDayWagesLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#8C7335',
+    letterSpacing: 0.5,
+  },
+  totalDayWagesSub: {
+    fontSize: 9,
+    color: colors.textMuted,
+  },
+  totalDayWagesAmount: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: colors.available,
   },
 });
 

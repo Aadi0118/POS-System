@@ -45,7 +45,7 @@ const calculateStaffMonthSalary = async (user, month) => {
   // Fetch all attendance records for this employee in this month
   const attendanceRecords = await Attendance.find({
     userId: user._id,
-    dateString: { $regex: new RegExp(`^${month}-`) },
+    dateString: { $regex: new RegExp(`^${month}`) },
   }).lean();
 
   const attendanceMap = new Map();
