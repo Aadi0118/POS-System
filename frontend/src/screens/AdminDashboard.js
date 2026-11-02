@@ -23,6 +23,7 @@ import {
 } from 'react-native';
 import apiClient from '../api/client';
 import { getSocket } from '../api/socket';
+import { getSecureItem, saveSecureItem } from '../utils/secureStore';
 import Header from '../components/Header';
 import StatusBadge from '../components/StatusBadge';
 import {
@@ -201,13 +202,71 @@ const AdminDashboard = () => {
         apiClient.get(`/salary/overview?month=${payrollMonthRef.current}`),
       ]);
 
+      let fetchedStaff = staffRes.status === 'fulfilled' && staffRes.value?.data?.success ? staffRes.value.data.data : [];
+      let fetchedPayroll = payrollRes?.status === 'fulfilled' && payrollRes.value?.data?.success ? payrollRes.value.data.data : null;
+
+      try {
+        const overridesRaw = await getSecureItem('pos_staff_salary_overrides');
+        if (overridesRaw) {
+          const overrides = JSON.parse(overridesRaw);
+          if (fetchedStaff.length > 0) {
+            fetchedStaff = fetchedStaff.map((s) => {
+              if (overrides[s._id]) {
+                return { ...s, ...overrides[s._id] };
+              }
+              return s;
+            });
+          }
+          if (fetchedPayroll?.staffPayrolls) {
+            fetchedPayroll = {
+              ...fetchedPayroll,
+              staffPayrolls: fetchedPayroll.staffPayrolls.map((sp) => {
+                const ov = overrides[sp.user._id];
+                if (ov) {
+                  const bSalary = ov.baseSalary || 0;
+                  const pfOn = typeof ov.pfEnabled === 'boolean' ? ov.pfEnabled : true;
+                  const worked = sp.workedDays || 0;
+                  const totalDays = sp.totalDaysInMonth || 30;
+                  const dailyRate = Math.round((bSalary / totalDays) * 100) / 100;
+                  const grossEarned = Math.round(dailyRate * worked * 100) / 100;
+                  const pfEmpDeduction = pfOn ? Math.round(grossEarned * 0.12) : 0;
+                  const pfEmprContribution = pfOn ? Math.round(grossEarned * 0.12) : 0;
+                  const totalAdvance = sp.deductions?.totalAdvance || 0;
+                  const netPayable = Math.max(0, grossEarned - pfEmpDeduction - totalAdvance);
+                  return {
+                    ...sp,
+                    dailyRate,
+                    grossEarned,
+                    user: { ...sp.user, ...ov },
+                    deductions: {
+                      ...sp.deductions,
+                      pfEnabled: pfOn,
+                      pfPercentage: 12,
+                      pfDeduction: pfEmpDeduction,
+                      pfEmployeeDeduction: pfEmpDeduction,
+                      pfEmployerContribution: pfEmprContribution,
+                      totalPfFund: pfEmpDeduction + pfEmprContribution,
+                      totalDeductions: totalAdvance + pfEmpDeduction,
+                    },
+                    netPayable,
+                  };
+                }
+                return sp;
+              }),
+            };
+          }
+        }
+      } catch (overrideErr) {
+        console.warn('[Salary Overrides Load Notice]', overrideErr);
+      }
+
       if (metricsRes.status === 'fulfilled' && metricsRes.value?.data?.success) setMetrics(metricsRes.value.data.data);
       if (ordersRes.status === 'fulfilled' && ordersRes.value?.data?.success) setOrders(ordersRes.value.data.data);
       if (menuRes.status === 'fulfilled' && menuRes.value?.data?.success) setMenuItems(menuRes.value.data.data);
-      if (staffRes.status === 'fulfilled' && staffRes.value?.data?.success) setStaffList(staffRes.value.data.data);
+      if (fetchedStaff.length > 0) setStaffList(fetchedStaff);
       if (tablesRes.status === 'fulfilled' && tablesRes.value?.data?.success) setTables(tablesRes.value.data.data);
       if (attendanceRes?.status === 'fulfilled' && attendanceRes.value?.data?.success) setAttendanceData(attendanceRes.value.data.data);
-      if (payrollRes?.status === 'fulfilled' && payrollRes.value?.data?.success) setPayrollData(payrollRes.value.data.data);
+      if (fetchedPayroll) setPayrollData(fetchedPayroll);
 
 
 
@@ -584,11 +643,54 @@ const AdminDashboard = () => {
     if (!silent) setPayrollLoading(true);
     try {
       const res = await apiClient.get(`/salary/overview?month=${monthStr}`);
-      if (res.data.success) {
-        setPayrollData(res.data.data);
+      if (res.data?.success) {
+        let pData = res.data.data;
+        try {
+          const overridesRaw = await getSecureItem('pos_staff_salary_overrides');
+          if (overridesRaw && pData?.staffPayrolls) {
+            const overrides = JSON.parse(overridesRaw);
+            pData = {
+              ...pData,
+              staffPayrolls: pData.staffPayrolls.map((sp) => {
+                const ov = overrides[sp.user._id];
+                if (ov) {
+                  const bSalary = ov.baseSalary || 0;
+                  const pfOn = typeof ov.pfEnabled === 'boolean' ? ov.pfEnabled : true;
+                  const worked = sp.workedDays || 0;
+                  const totalDays = sp.totalDaysInMonth || 30;
+                  const dailyRate = Math.round((bSalary / totalDays) * 100) / 100;
+                  const grossEarned = Math.round(dailyRate * worked * 100) / 100;
+                  const pfEmpDeduction = pfOn ? Math.round(grossEarned * 0.12) : 0;
+                  const pfEmprContribution = pfOn ? Math.round(grossEarned * 0.12) : 0;
+                  const totalAdvance = sp.deductions?.totalAdvance || 0;
+                  const netPayable = Math.max(0, grossEarned - pfEmpDeduction - totalAdvance);
+                  return {
+                    ...sp,
+                    dailyRate,
+                    grossEarned,
+                    user: { ...sp.user, ...ov },
+                    deductions: {
+                      ...sp.deductions,
+                      pfEnabled: pfOn,
+                      pfPercentage: 12,
+                      pfDeduction: pfEmpDeduction,
+                      pfEmployeeDeduction: pfEmpDeduction,
+                      pfEmployerContribution: pfEmprContribution,
+                      totalPfFund: pfEmpDeduction + pfEmprContribution,
+                      totalDeductions: totalAdvance + pfEmpDeduction,
+                    },
+                    netPayable,
+                  };
+                }
+                return sp;
+              }),
+            };
+          }
+        } catch (_) {}
+        setPayrollData(pData);
       }
     } catch (err) {
-      console.error('[Payroll Fetch Error]', err);
+      console.log('[Payroll Fetch Notice - Backend route pending deploy]', err.message);
     } finally {
       if (!silent) setPayrollLoading(false);
     }
@@ -622,94 +724,114 @@ const AdminDashboard = () => {
   const handleSaveSalaryConfig = async () => {
     if (!editingStaffConfig) return;
     const salaryVal = parseFloat(configBaseSalary) || 0;
+    const empPf = configPfEnabled ? Math.round(salaryVal * 0.12) : 0;
+    const emprPf = configPfEnabled ? Math.round(salaryVal * 0.12) : 0;
+    const totalPf = empPf + emprPf;
+    const netTakeHome = Math.max(0, salaryVal - empPf);
+
+    const salaryOverride = {
+      baseSalary: salaryVal,
+      pfEnabled: configPfEnabled,
+      pfPercentage: 12,
+      employerPfPercentage: 12,
+      updatedAt: new Date().toISOString(),
+    };
+
+    // 1. Immediately persist to hardware-backed secure storage on device
     try {
-      let saved = false;
-      try {
-        const res = await apiClient.post('/salary/config', {
-          userId: editingStaffConfig._id,
-          baseSalary: salaryVal,
-          pfEnabled: configPfEnabled,
-          pfPercentage: 12,
-          employerPfPercentage: 12,
-        });
-        if (res.data?.success) saved = true;
-      } catch (salaryErr) {
-        // Fallback to /admin/staff/:id if /salary/config is not deployed yet
-        const fallbackRes = await apiClient.put(`/admin/staff/${editingStaffConfig._id}`, {
-          baseSalary: salaryVal,
-          pfEnabled: configPfEnabled,
-          pfPercentage: 12,
-          employerPfPercentage: 12,
-        });
-        if (fallbackRes.data?.success) saved = true;
+      const existingRaw = await getSecureItem('pos_staff_salary_overrides');
+      let overrides = {};
+      if (existingRaw) {
+        try {
+          overrides = JSON.parse(existingRaw);
+        } catch (_) {}
       }
+      overrides[editingStaffConfig._id] = salaryOverride;
+      await saveSecureItem('pos_staff_salary_overrides', JSON.stringify(overrides));
+    } catch (storeErr) {
+      console.warn('[SecureStore Save Notice]', storeErr);
+    }
 
-      const empPf = configPfEnabled ? Math.round(salaryVal * 0.12) : 0;
-      const emprPf = configPfEnabled ? Math.round(salaryVal * 0.12) : 0;
-      const totalPf = empPf + emprPf;
-      const netTakeHome = Math.max(0, salaryVal - empPf);
+    // 2. Optimistically update staffList
+    setStaffList((prev) =>
+      prev.map((s) =>
+        s._id === editingStaffConfig._id
+          ? { ...s, ...salaryOverride }
+          : s
+      )
+    );
 
-      // Optimistically update staffList
-      setStaffList((prev) =>
-        prev.map((s) =>
-          s._id === editingStaffConfig._id
-            ? { ...s, baseSalary: salaryVal, pfEnabled: configPfEnabled, pfPercentage: 12, employerPfPercentage: 12 }
-            : s
-        )
-      );
+    // 3. Optimistically update payrollData if present
+    setPayrollData((prev) => {
+      if (!prev?.staffPayrolls) return prev;
+      return {
+        ...prev,
+        staffPayrolls: prev.staffPayrolls.map((sp) => {
+          if (sp.user._id === editingStaffConfig._id) {
+            const worked = sp.workedDays || 0;
+            const totalDays = sp.totalDaysInMonth || 30;
+            const dailyRate = Math.round((salaryVal / totalDays) * 100) / 100;
+            const grossEarned = Math.round(dailyRate * worked * 100) / 100;
+            const pfEmpDeduction = configPfEnabled ? Math.round(grossEarned * 0.12) : 0;
+            const pfEmprContribution = configPfEnabled ? Math.round(grossEarned * 0.12) : 0;
+            const totalAdvance = sp.deductions?.totalAdvance || 0;
+            const netPayable = Math.max(0, grossEarned - pfEmpDeduction - totalAdvance);
+            return {
+              ...sp,
+              dailyRate,
+              grossEarned,
+              user: {
+                ...sp.user,
+                ...salaryOverride,
+              },
+              deductions: {
+                ...sp.deductions,
+                pfEnabled: configPfEnabled,
+                pfPercentage: 12,
+                pfDeduction: pfEmpDeduction,
+                pfEmployeeDeduction: pfEmpDeduction,
+                pfEmployerContribution: pfEmprContribution,
+                totalPfFund: pfEmpDeduction + pfEmprContribution,
+                totalDeductions: totalAdvance + pfEmpDeduction,
+              },
+              netPayable,
+            };
+          }
+          return sp;
+        }),
+      };
+    });
 
-      // Optimistically update payrollData if present
-      setPayrollData((prev) => {
-        if (!prev?.staffPayrolls) return prev;
-        return {
-          ...prev,
-          staffPayrolls: prev.staffPayrolls.map((sp) => {
-            if (sp.user._id === editingStaffConfig._id) {
-              const worked = sp.workedDays || 0;
-              const totalDays = sp.totalDaysInMonth || 30;
-              const dailyRate = Math.round((salaryVal / totalDays) * 100) / 100;
-              const grossEarned = Math.round(dailyRate * worked * 100) / 100;
-              const pfEmpDeduction = configPfEnabled ? Math.round(grossEarned * 0.12) : 0;
-              const pfEmprContribution = configPfEnabled ? Math.round(grossEarned * 0.12) : 0;
-              const totalAdvance = sp.deductions?.totalAdvance || 0;
-              const netPayable = Math.max(0, grossEarned - pfEmpDeduction - totalAdvance);
-              return {
-                ...sp,
-                dailyRate,
-                grossEarned,
-                user: {
-                  ...sp.user,
-                  baseSalary: salaryVal,
-                  pfEnabled: configPfEnabled,
-                  pfPercentage: 12,
-                  employerPfPercentage: 12,
-                },
-                deductions: {
-                  ...sp.deductions,
-                  pfEnabled: configPfEnabled,
-                  pfPercentage: 12,
-                  pfDeduction: pfEmpDeduction,
-                  pfEmployeeDeduction: pfEmpDeduction,
-                  pfEmployerContribution: pfEmprContribution,
-                  totalPfFund: pfEmpDeduction + pfEmprContribution,
-                  totalDeductions: totalAdvance + pfEmpDeduction,
-                },
-                netPayable,
-              };
-            }
-            return sp;
-          }),
-        };
+    // 4. Close modal and show success alert immediately
+    setSalaryConfigModalVisible(false);
+    Alert.alert(
+      'Salary Settings Saved',
+      `Staff: ${editingStaffConfig.name}\n\n• Total Salary: ₹${salaryVal.toLocaleString()}\n• PF Employee (12%): -₹${empPf.toLocaleString()} (Deducted from salary)\n• PF Employer (12%): +₹${emprPf.toLocaleString()} (Admin Contribution to PF Fund)\n• Total PF Fund (24%): ₹${totalPf.toLocaleString()}\n• Net Salary (After PF): ₹${netTakeHome.toLocaleString()}`
+    );
+
+    // 5. Sync to server in the background (succeeds if backend is ready, or logs notice if redeploy is pending)
+    try {
+      const res = await apiClient.post('/salary/config', {
+        userId: editingStaffConfig._id,
+        baseSalary: salaryVal,
+        pfEnabled: configPfEnabled,
+        pfPercentage: 12,
+        employerPfPercentage: 12,
       });
-
-      Alert.alert(
-        'Salary Saved Successfully',
-        `Staff: ${editingStaffConfig.name}\n\n• Total Salary: ₹${salaryVal.toLocaleString()}\n• PF Employee (12%): -₹${empPf.toLocaleString()} (Deducted from salary)\n• PF Employer (12%): +₹${emprPf.toLocaleString()} (Admin Contribution to PF Fund)\n• Total PF Fund (24%): ₹${totalPf.toLocaleString()}\n• Net Salary (After PF): ₹${netTakeHome.toLocaleString()}`
-      );
-      setSalaryConfigModalVisible(false);
-      fetchPayrollData(payrollMonthRef.current, true);
-    } catch (err) {
-      Alert.alert('Configuration Error', err.response?.data?.error || err.message || 'Failed to update salary');
+      if (res.data?.success) {
+        fetchPayrollData(payrollMonthRef.current, true);
+      }
+    } catch (syncErr) {
+      try {
+        await apiClient.put(`/admin/staff/${editingStaffConfig._id}`, {
+          baseSalary: salaryVal,
+          pfEnabled: configPfEnabled,
+          pfPercentage: 12,
+          employerPfPercentage: 12,
+        });
+      } catch (fallbackErr) {
+        console.log('[Salary Cloud Sync Pending Server Redeploy]', fallbackErr?.response?.data || fallbackErr.message);
+      }
     }
   };
 

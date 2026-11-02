@@ -1,62 +1,48 @@
 /**
  * @file salary.validator.js
- * @description Input validation schemas for salary management, advances, and payouts.
+ * @description Input validation schemas for salary management, advances, and payouts using Zod.
  */
 
-const Joi = require('joi');
+const { z } = require('zod');
 
-const updateSalaryConfigSchema = Joi.object({
-  userId: Joi.string().hex().length(24).required().messages({
-    'string.hex': 'Invalid employee ID format',
-    'string.length': 'Employee ID must be 24 hex characters',
-    'any.required': 'Employee ID is required',
+const OBJECT_ID_REGEX = /^[0-9a-fA-F]{24}$/;
+const MONTH_REGEX = /^\d{4}-(0[1-9]|1[0-2])$/;
+const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+
+const updateSalaryConfigSchema = z.object({
+  body: z.object({
+    userId: z.string({
+      required_error: 'Employee ID is required',
+    }).regex(OBJECT_ID_REGEX, 'Invalid employee ID format'),
+    baseSalary: z.number({
+      required_error: 'Base monthly salary is required',
+    }).min(0, 'Base salary cannot be negative').max(10000000, 'Base salary exceeds maximum threshold'),
+    pfEnabled: z.boolean().default(false),
+    pfPercentage: z.number().min(0).max(100).default(12),
+    employerPfPercentage: z.number().min(0).max(100).default(12),
   }),
-  baseSalary: Joi.number().min(0).max(1000000).required().messages({
-    'number.base': 'Base salary must be a number',
-    'number.min': 'Base salary cannot be negative',
-    'any.required': 'Base monthly salary is required',
-  }),
-  pfEnabled: Joi.boolean().required(),
-  pfPercentage: Joi.number().min(0).max(100).default(12),
-  employerPfPercentage: Joi.number().min(0).max(100).default(12),
 });
 
-const recordAdvanceSchema = Joi.object({
-  userId: Joi.string().hex().length(24).required(),
-  month: Joi.string()
-    .pattern(/^\d{4}-(0[1-9]|1[0-2])$/)
-    .required()
-    .messages({
-      'string.pattern.base': 'Month must be in YYYY-MM format',
-    }),
-  date: Joi.string()
-    .pattern(/^\d{4}-\d{2}-\d{2}$/)
-    .required()
-    .messages({
-      'string.pattern.base': 'Date must be in YYYY-MM-DD format',
-    }),
-  amount: Joi.number().min(1).max(500000).required().messages({
-    'number.min': 'Advance amount must be at least ₹1',
+const recordAdvanceSchema = z.object({
+  body: z.object({
+    userId: z.string().regex(OBJECT_ID_REGEX, 'Invalid employee ID format'),
+    month: z.string().regex(MONTH_REGEX, 'Month must be in YYYY-MM format'),
+    date: z.string().regex(DATE_REGEX, 'Date must be in YYYY-MM-DD format'),
+    amount: z.number().min(1, 'Advance amount must be at least ₹1').max(1000000),
+    paymentMode: z.enum(['Cash', 'UPI', 'Bank Transfer']).default('Cash'),
+    reason: z.string().max(200).optional().default('Salary Advance'),
   }),
-  paymentMode: Joi.string()
-    .valid('Cash', 'UPI', 'Bank Transfer')
-    .default('Cash'),
-  reason: Joi.string().max(200).allow('', null).default('Salary Advance'),
 });
 
-const recordPayoutSchema = Joi.object({
-  userId: Joi.string().hex().length(24).required(),
-  month: Joi.string()
-    .pattern(/^\d{4}-(0[1-9]|1[0-2])$/)
-    .required(),
-  amountPaid: Joi.number().min(0).max(1000000).required(),
-  paymentMode: Joi.string()
-    .valid('Cash', 'UPI', 'Bank Transfer', 'Pending')
-    .default('Cash'),
-  paymentStatus: Joi.string()
-    .valid('Unpaid', 'Partially Paid', 'Paid')
-    .required(),
-  notes: Joi.string().max(300).allow('', null).default(''),
+const recordPayoutSchema = z.object({
+  body: z.object({
+    userId: z.string().regex(OBJECT_ID_REGEX, 'Invalid employee ID format'),
+    month: z.string().regex(MONTH_REGEX, 'Month must be in YYYY-MM format'),
+    amountPaid: z.number().min(0).max(10000000),
+    paymentMode: z.enum(['Cash', 'UPI', 'Bank Transfer', 'Pending']).default('Cash'),
+    paymentStatus: z.enum(['Unpaid', 'Partially Paid', 'Paid']),
+    notes: z.string().max(300).optional().default(''),
+  }),
 });
 
 module.exports = {
@@ -64,4 +50,3 @@ module.exports = {
   recordAdvanceSchema,
   recordPayoutSchema,
 };
-
