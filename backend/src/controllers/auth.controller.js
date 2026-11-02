@@ -14,7 +14,7 @@ const User = require('../models/User');
 const getStaffList = async (req, res, next) => {
   try {
     const staff = await User.find({ isActive: true })
-      .select('_id name role baseSalary pfEnabled pfPercentage employerPfPercentage')
+      .select('_id name role')
       .sort({ role: 1, name: 1 })
       .lean();
 
@@ -78,19 +78,25 @@ const login = async (req, res, next) => {
     );
 
     // Return sanitized identity and bearer token
+    const userPayload = {
+      id: user._id.toString(),
+      name: user.name,
+      role: user.role,
+      isActive: user.isActive,
+    };
+
+    // Salary details are strictly restricted to Admin role only
+    if (user.role === 'Admin') {
+      userPayload.baseSalary = user.baseSalary || 0;
+      userPayload.pfEnabled = typeof user.pfEnabled === 'boolean' ? user.pfEnabled : true;
+      userPayload.pfPercentage = user.pfPercentage || 12;
+      userPayload.employerPfPercentage = user.employerPfPercentage || 12;
+    }
+
     return res.status(200).json({
       success: true,
       token,
-      user: {
-        id: user._id.toString(),
-        name: user.name,
-        role: user.role,
-        isActive: user.isActive,
-        baseSalary: user.baseSalary || 0,
-        pfEnabled: typeof user.pfEnabled === 'boolean' ? user.pfEnabled : true,
-        pfPercentage: user.pfPercentage || 12,
-        employerPfPercentage: user.employerPfPercentage || 12,
-      },
+      user: userPayload,
     });
   } catch (error) {
     next(error);
@@ -113,18 +119,24 @@ const getMe = async (req, res, next) => {
       });
     }
 
+    const userPayload = {
+      id: user._id.toString(),
+      name: user.name,
+      role: user.role,
+      isActive: user.isActive,
+    };
+
+    // Salary details are strictly restricted to Admin role only
+    if (user.role === 'Admin') {
+      userPayload.baseSalary = user.baseSalary || 0;
+      userPayload.pfEnabled = typeof user.pfEnabled === 'boolean' ? user.pfEnabled : true;
+      userPayload.pfPercentage = user.pfPercentage || 12;
+      userPayload.employerPfPercentage = user.employerPfPercentage || 12;
+    }
+
     return res.status(200).json({
       success: true,
-      user: {
-        id: user._id.toString(),
-        name: user.name,
-        role: user.role,
-        isActive: user.isActive,
-        baseSalary: user.baseSalary || 0,
-        pfEnabled: typeof user.pfEnabled === 'boolean' ? user.pfEnabled : true,
-        pfPercentage: user.pfPercentage || 12,
-        employerPfPercentage: user.employerPfPercentage || 12,
-      },
+      user: userPayload,
     });
   } catch (error) {
     next(error);

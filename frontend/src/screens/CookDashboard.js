@@ -30,15 +30,12 @@ import {
   MichelinStars,
   GoldDivider,
 } from '../components/LuxuryPattern';
-import StaffSalaryModal from '../components/StaffSalaryModal';
-import StaffSalaryBanner from '../components/StaffSalaryBanner';
 import colors from '../theme/colors';
 
 const CookDashboard = () => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [salaryModalVisible, setSalaryModalVisible] = useState(false);
 
   useEffect(() => {
     fetchActiveOrders();
@@ -153,13 +150,6 @@ const CookDashboard = () => {
             <Text style={styles.stationTitle}>Main Cookline Station</Text>
           </View>
           <View style={styles.stationRightActions}>
-            <TouchableOpacity
-              style={styles.salaryActionBtn}
-              onPress={() => setSalaryModalVisible(true)}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.salaryActionBtnText}>💰 My Salary</Text>
-            </TouchableOpacity>
             <View style={styles.ticketCountBadge}>
               <Text style={styles.ticketCountNumber}>{orders.length}</Text>
               <Text style={styles.ticketCountLabel}>
@@ -168,9 +158,6 @@ const CookDashboard = () => {
             </View>
           </View>
         </View>
-
-        {/* Staff Profile & Monthly Salary Banner */}
-        <StaffSalaryBanner />
 
         {loading ? (
           <View style={styles.loaderCenter}>
@@ -349,11 +336,6 @@ const CookDashboard = () => {
         )}
       </LuxuryPatternBackground>
 
-      {/* Staff Salary & Day-Wise Breakdown Statement Modal */}
-      <StaffSalaryModal
-        visible={salaryModalVisible}
-        onClose={() => setSalaryModalVisible(false)}
-      />
     </View>
   );
 };

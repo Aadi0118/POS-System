@@ -16,13 +16,8 @@ const {
   recordPayoutSchema,
 } = require('../validators/salary.validator');
 
-// All salary endpoints require an authenticated user
-router.use(authenticateToken);
-
-// ==========================================================
-// STAFF ENDPOINTS (Accessible to all authenticated staff)
-// ==========================================================
-router.get('/my-salary', salaryController.getMySalary);
+// All salary endpoints are strictly restricted to Admin only
+router.use(authenticateToken, requireRole(['Admin']));
 
 // ==========================================================
 // ADMIN ENDPOINTS (Restricted strictly to Admin role)

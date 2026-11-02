@@ -28,8 +28,6 @@ import {
   MichelinStars,
   LuxuryProgressBar,
 } from '../components/LuxuryPattern';
-import StaffSalaryModal from '../components/StaffSalaryModal';
-import StaffSalaryBanner from '../components/StaffSalaryBanner';
 import colors from '../theme/colors';
 
 const CleanerDashboard = () => {
@@ -38,7 +36,6 @@ const CleanerDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [cleaningId, setCleaningId] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [salaryModalVisible, setSalaryModalVisible] = useState(false);
 
   useEffect(() => {
     fetchDashboardData();
@@ -115,13 +112,6 @@ const CleanerDashboard = () => {
               <Text style={styles.hygieneTitle}>Main Dining Salon Hygiene</Text>
             </View>
             <View style={styles.hygieneRightActions}>
-              <TouchableOpacity
-                style={styles.salaryActionBtn}
-                onPress={() => setSalaryModalVisible(true)}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.salaryActionBtnText}>💰 My Salary</Text>
-              </TouchableOpacity>
               <View style={styles.cleanRateBadge}>
                 <Text style={styles.cleanRateText}>
                   {cleanTablesCount}/{totalTablesCount} Clean
@@ -136,9 +126,6 @@ const CleanerDashboard = () => {
             totalLabel={`${Math.round(cleanRatio * 100)}% Ready`}
           />
         </View>
-
-        {/* Staff Profile & Monthly Salary Banner */}
-        <StaffSalaryBanner />
 
         {loading ? (
           <View style={styles.loaderCenter}>
@@ -221,11 +208,6 @@ const CleanerDashboard = () => {
         )}
       </LuxuryPatternBackground>
 
-      {/* Staff Salary Statement Modal */}
-      <StaffSalaryModal
-        visible={salaryModalVisible}
-        onClose={() => setSalaryModalVisible(false)}
-      />
     </View>
   );
 };

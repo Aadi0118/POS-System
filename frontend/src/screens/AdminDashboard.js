@@ -193,14 +193,14 @@ const AdminDashboard = () => {
     try {
       const [metricsRes, ordersRes, menuRes, staffRes, tablesRes, attendanceRes, payrollRes] =
         await Promise.allSettled([
-        apiClient.get('/admin/metrics'),
-        apiClient.get('/orders'),
-        apiClient.get('/menu'),
-        apiClient.get('/admin/staff'),
-        apiClient.get('/tables'),
-        apiClient.get(`/admin/attendance/daily?date=${attendanceDateRef.current}`),
-        apiClient.get(`/salary/overview?month=${payrollMonthRef.current}`),
-      ]);
+          apiClient.get('/admin/metrics'),
+          apiClient.get('/orders'),
+          apiClient.get('/menu'),
+          apiClient.get('/admin/staff'),
+          apiClient.get('/tables'),
+          apiClient.get(`/admin/attendance/daily?date=${attendanceDateRef.current}`),
+          apiClient.get(`/salary/overview?month=${payrollMonthRef.current}`),
+        ]);
 
       let fetchedStaff = staffRes.status === 'fulfilled' && staffRes.value?.data?.success ? staffRes.value.data.data : [];
       let fetchedPayroll = payrollRes?.status === 'fulfilled' && payrollRes.value?.data?.success ? payrollRes.value.data.data : null;
@@ -686,7 +686,7 @@ const AdminDashboard = () => {
               }),
             };
           }
-        } catch (_) {}
+        } catch (_) { }
         setPayrollData(pData);
       }
     } catch (err) {
@@ -815,7 +815,7 @@ const AdminDashboard = () => {
       if (res.data?.success && res.data.data) {
         setSelectedStaffForDayWise(res.data.data);
       }
-    } catch (_) {}
+    } catch (_) { }
   };
 
   const handleOpenSalaryConfigModal = (target) => {
@@ -851,7 +851,7 @@ const AdminDashboard = () => {
       if (existingRaw) {
         try {
           overrides = JSON.parse(existingRaw);
-        } catch (_) {}
+        } catch (_) { }
       }
       overrides[editingStaffConfig._id] = salaryOverride;
       await saveSecureItem('pos_staff_salary_overrides', JSON.stringify(overrides));
@@ -2822,15 +2822,45 @@ const AdminDashboard = () => {
                     </View>
                   </View>
 
-                  {/* Deductions Breakdown */}
+                  {/* Monthly Salary & Deductions Breakdown */}
                   <View style={styles.adminModalDeductionBox}>
                     <View style={styles.deductionLine}>
-                      <Text style={styles.deductionLabel}>
-                        PF ({selectedStaffForDayWise.deductions.pfEnabled ? `${selectedStaffForDayWise.deductions.pfPercentage}%` : 'Off'}):
+                      <Text style={styles.deductionLabel}>Total salary:</Text>
+                      <Text style={[styles.deductionValue, { color: colors.secondary, fontWeight: '900' }]}>
+                        ₹{(selectedStaffForDayWise.user?.baseSalary || 0).toLocaleString()}
                       </Text>
-                      <Text style={styles.deductionValue}>
+                    </View>
+
+                    <View style={styles.deductionLine}>
+                      <Text style={styles.deductionLabel}>Net salary (after PF deduction):</Text>
+                      <Text style={[styles.deductionValue, { color: colors.available, fontWeight: '900' }]}>
+                        ₹{(selectedStaffForDayWise.netPayable || 0).toLocaleString()}
+                      </Text>
+                    </View>
+
+                    <View style={styles.deductionLine}>
+                      <Text style={styles.deductionLabel}>PF given by employee (12% of total salary):</Text>
+                      <Text style={[styles.deductionValue, { color: colors.dirty }]}>
                         {selectedStaffForDayWise.deductions.pfEnabled
-                          ? `- ₹${selectedStaffForDayWise.deductions.pfDeduction.toLocaleString()}`
+                          ? `- ₹${(selectedStaffForDayWise.deductions.pfEmployeeDeduction || selectedStaffForDayWise.deductions.pfDeduction || Math.round((selectedStaffForDayWise.user?.baseSalary || 0) * 0.12)).toLocaleString()}`
+                          : '₹0'}
+                      </Text>
+                    </View>
+
+                    <View style={styles.deductionLine}>
+                      <Text style={styles.deductionLabel}>PF given by the employer (12% of total salary):</Text>
+                      <Text style={[styles.deductionValue, { color: colors.available }]}>
+                        {selectedStaffForDayWise.deductions.pfEnabled
+                          ? `+ ₹${(selectedStaffForDayWise.deductions.pfEmployerContribution || Math.round((selectedStaffForDayWise.user?.baseSalary || 0) * 0.12)).toLocaleString()}`
+                          : '₹0'}
+                      </Text>
+                    </View>
+
+                    <View style={styles.deductionLine}>
+                      <Text style={styles.deductionLabel}>Total PF Deposited (24% into fund):</Text>
+                      <Text style={[styles.deductionValue, { color: '#B8860B', fontWeight: '900' }]}>
+                        {selectedStaffForDayWise.deductions.pfEnabled
+                          ? `₹${(selectedStaffForDayWise.deductions.totalPfFund || Math.round((selectedStaffForDayWise.user?.baseSalary || 0) * 0.24)).toLocaleString()}`
                           : '₹0'}
                       </Text>
                     </View>

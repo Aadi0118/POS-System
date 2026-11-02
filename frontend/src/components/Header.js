@@ -5,42 +5,13 @@
  * and elegant staff identity badge with visible luxury borders.
  */
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
 import { useAuth } from '../context/AuthContext';
-import { getSecureItem } from '../utils/secureStore';
-import StaffSalaryModal from './StaffSalaryModal';
 import colors from '../theme/colors';
 
 const Header = ({ title, subtitle }) => {
   const { user, logout } = useAuth();
-  const [salaryModalVisible, setSalaryModalVisible] = useState(false);
-  const [effectiveUser, setEffectiveUser] = useState(user);
-
-  useEffect(() => {
-    let isMounted = true;
-    const checkSalaryOverride = async () => {
-      if (!user) return;
-      try {
-        const raw = await getSecureItem('pos_staff_salary_overrides');
-        if (raw && isMounted) {
-          const overrides = JSON.parse(raw);
-          const userId = user.id || user._id;
-          if (overrides[userId]) {
-            setEffectiveUser({ ...user, ...overrides[userId] });
-            return;
-          }
-        }
-      } catch (_) {}
-      if (isMounted) setEffectiveUser(user);
-    };
-    checkSalaryOverride();
-    return () => { isMounted = false; };
-  }, [user]);
-
-  const userSalary = effectiveUser?.baseSalary || 0;
-  const pfEnabled = typeof effectiveUser?.pfEnabled === 'boolean' ? effectiveUser.pfEnabled : true;
-  const netSalary = pfEnabled ? Math.max(0, userSalary - Math.round(userSalary * 0.12)) : userSalary;
 
   return (
     <View style={styles.wrapper}>
@@ -75,29 +46,20 @@ const Header = ({ title, subtitle }) => {
 
         {/* Right Section: Staff Identity & Actions */}
         <View style={styles.rightSection}>
-          {effectiveUser && (
-            <TouchableOpacity
-              style={styles.userBadge}
-              onPress={() => setSalaryModalVisible(true)}
-              activeOpacity={0.7}
-            >
+          {user && (
+            <View style={styles.userBadge}>
               <View style={styles.livePulseContainer}>
                 <View style={styles.livePulseDot} />
               </View>
               <View style={styles.userInfo}>
                 <Text style={styles.userName} numberOfLines={1} ellipsizeMode="tail">
-                  {effectiveUser.name}
+                  {user.name}
                 </Text>
                 <View style={styles.rolePill}>
-                  <Text style={styles.roleText}>{effectiveUser.role}</Text>
+                  <Text style={styles.roleText}>{user.role}</Text>
                 </View>
               </View>
-              {userSalary > 0 && (
-                <View style={styles.miniHeaderSalaryBadge}>
-                  <Text style={styles.miniHeaderSalaryText}>₹{netSalary.toLocaleString()}</Text>
-                </View>
-              )}
-            </TouchableOpacity>
+            </View>
           )}
 
           <TouchableOpacity style={styles.logoutBtn} onPress={logout} activeOpacity={0.7}>
@@ -105,13 +67,6 @@ const Header = ({ title, subtitle }) => {
           </TouchableOpacity>
         </View>
       </View>
-
-      {/* Staff Salary & Day-Wise Breakdown Statement Modal */}
-      <StaffSalaryModal
-        visible={salaryModalVisible}
-        onClose={() => setSalaryModalVisible(false)}
-        targetStaff={effectiveUser}
-      />
     </View>
   );
 };
@@ -143,52 +98,47 @@ const styles = StyleSheet.create({
   leftSection: {
     flex: 1,
     minWidth: 0,
-    marginRight: 8,
   },
   titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
   },
   crestCircle: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: '#FFFFFF',
     borderWidth: 1.5,
     borderColor: colors.cardBorderGold,
-    justifyContent: 'center',
     alignItems: 'center',
-    overflow: 'hidden',
+    justifyContent: 'center',
+    marginRight: 9,
     shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.15,
     shadowRadius: 4,
     elevation: 2,
-    flexShrink: 0,
+    padding: 2,
   },
   headerLogo: {
     width: '100%',
     height: '100%',
   },
-  crestEmoji: {
-    fontSize: 14,
-  },
   titleTextContainer: {
     flex: 1,
-    minWidth: 0,
+    justifyContent: 'center',
   },
   title: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '900',
-    color: colors.text,
-    letterSpacing: 0.4,
+    color: colors.secondary,
+    letterSpacing: 0.6,
   },
   serviceRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
     marginTop: 1,
+    gap: 3,
   },
   serviceSparkle: {
     color: colors.primary,
@@ -216,21 +166,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1.5,
     borderColor: colors.cardBorderGold,
-    maxWidth: 220,
-  },
-  miniHeaderSalaryBadge: {
-    backgroundColor: '#ECFDF5',
-    borderWidth: 1,
-    borderColor: '#10B981',
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 4,
-    marginLeft: 5,
-  },
-  miniHeaderSalaryText: {
-    color: '#059669',
-    fontSize: 9.5,
-    fontWeight: '900',
+    maxWidth: 160,
   },
   livePulseContainer: {
     marginRight: 5,
@@ -251,7 +187,7 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 11,
     fontWeight: '800',
-    maxWidth: 65,
+    maxWidth: 75,
   },
   rolePill: {
     backgroundColor: colors.primaryLight,

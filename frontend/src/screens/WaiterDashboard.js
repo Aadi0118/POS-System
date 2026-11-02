@@ -32,8 +32,6 @@ import {
   LuxuryTicketClip,
   MichelinStars,
 } from '../components/LuxuryPattern';
-import StaffSalaryModal from '../components/StaffSalaryModal';
-import StaffSalaryBanner from '../components/StaffSalaryBanner';
 import colors from '../theme/colors';
 
 const CATEGORY_ICONS = {
@@ -68,7 +66,6 @@ const WaiterDashboard = () => {
   // New courses being added by waiter during this session
   const [newItems, setNewItems] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [salaryModalVisible, setSalaryModalVisible] = useState(false);
 
   useEffect(() => {
     fetchInitialData();
@@ -349,21 +346,11 @@ const WaiterDashboard = () => {
             <Text style={styles.floorTitle}>Seating & Hospitality Grid</Text>
           </View>
           <View style={styles.floorBannerRightActions}>
-            <TouchableOpacity
-              style={styles.salaryActionBtn}
-              onPress={() => setSalaryModalVisible(true)}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.salaryActionBtnText}>💰 My Salary</Text>
-            </TouchableOpacity>
             <View style={styles.activeGuestBadge}>
               <Text style={styles.activeGuestText}>{occupiedCount} Active Salon{occupiedCount !== 1 ? 's' : ''}</Text>
             </View>
           </View>
         </View>
-
-        {/* Staff Profile & Monthly Salary Banner */}
-        <StaffSalaryBanner />
 
         {loading ? (
           <View style={styles.loaderCenter}>
@@ -949,11 +936,6 @@ const WaiterDashboard = () => {
         </View>
       </Modal>
 
-      {/* Staff Salary & Day-Wise Breakdown Statement Modal */}
-      <StaffSalaryModal
-        visible={salaryModalVisible}
-        onClose={() => setSalaryModalVisible(false)}
-      />
     </View>
   );
 };
