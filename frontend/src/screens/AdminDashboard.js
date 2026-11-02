@@ -229,8 +229,10 @@ const AdminDashboard = () => {
                   const totalDays = sp.totalDaysInMonth || 30;
                   const dailyRate = Math.round((bSalary / totalDays) * 100) / 100;
                   const grossEarned = Math.round(dailyRate * worked * 100) / 100;
-                  const pfEmpDeduction = pfOn ? Math.round(grossEarned * 0.12) : 0;
-                  const pfEmprContribution = pfOn ? Math.round(grossEarned * 0.12) : 0;
+                  // PF calculated on 40% of salary
+                  const pfWage = grossEarned * 0.40;
+                  const pfEmpDeduction = pfOn ? Math.round(pfWage * 0.12) : 0;
+                  const pfEmprContribution = pfOn ? Math.round(pfWage * 0.12) : 0;
                   const totalAdvance = sp.deductions?.totalAdvance || 0;
                   const netPayable = Math.max(0, grossEarned - pfEmpDeduction - totalAdvance);
                   return {
@@ -242,6 +244,7 @@ const AdminDashboard = () => {
                       ...sp.deductions,
                       pfEnabled: pfOn,
                       pfPercentage: 12,
+                      pfWageBasis: pfWage,
                       pfDeduction: pfEmpDeduction,
                       pfEmployeeDeduction: pfEmpDeduction,
                       pfEmployerContribution: pfEmprContribution,
@@ -481,8 +484,10 @@ const AdminDashboard = () => {
                     : (typeof s.pfEnabled === 'boolean' ? s.pfEnabled : true));
 
               const dailyRate = totalDaysInMonth > 0 ? Math.round((baseSalary / totalDaysInMonth) * 100) / 100 : 0;
-              const empPf = pfEnabled ? Math.round(baseSalary * 0.12) : 0;
-              const emprPf = pfEnabled ? Math.round(baseSalary * 0.12) : 0;
+              // PF is calculated on 40% of salary
+              const pfWage = baseSalary * 0.40;
+              const empPf = pfEnabled ? Math.round(pfWage * 0.12) : 0;
+              const emprPf = pfEnabled ? Math.round(pfWage * 0.12) : 0;
               const dailyEmpPf = totalDaysInMonth > 0 ? Math.round((empPf / totalDaysInMonth) * 100) / 100 : 0;
               const dailyEmprPf = totalDaysInMonth > 0 ? Math.round((emprPf / totalDaysInMonth) * 100) / 100 : 0;
               const dailyNetSalary = Math.max(0, Math.round((dailyRate - dailyEmpPf) * 100) / 100);
@@ -740,8 +745,10 @@ const AdminDashboard = () => {
                   const totalDays = sp.totalDaysInMonth || 30;
                   const dailyRate = Math.round((bSalary / totalDays) * 100) / 100;
                   const grossEarned = Math.round(dailyRate * worked * 100) / 100;
-                  const pfEmpDeduction = pfOn ? Math.round(grossEarned * 0.12) : 0;
-                  const pfEmprContribution = pfOn ? Math.round(grossEarned * 0.12) : 0;
+                  // PF calculated on 40% of salary
+                  const pfWage = grossEarned * 0.40;
+                  const pfEmpDeduction = pfOn ? Math.round(pfWage * 0.12) : 0;
+                  const pfEmprContribution = pfOn ? Math.round(pfWage * 0.12) : 0;
                   const totalAdvance = sp.deductions?.totalAdvance || 0;
                   const netPayable = Math.max(0, grossEarned - pfEmpDeduction - totalAdvance);
                   return {
@@ -753,6 +760,7 @@ const AdminDashboard = () => {
                       ...sp.deductions,
                       pfEnabled: pfOn,
                       pfPercentage: 12,
+                      pfWageBasis: pfWage,
                       pfDeduction: pfEmpDeduction,
                       pfEmployeeDeduction: pfEmpDeduction,
                       pfEmployerContribution: pfEmprContribution,
@@ -820,8 +828,10 @@ const AdminDashboard = () => {
     const totalDays = new Date(y, m, 0).getDate();
 
     const dailyRate = totalDays > 0 ? Math.round((bSalary / totalDays) * 100) / 100 : 0;
-    const empPfMonthly = pfOn ? Math.round(bSalary * 0.12) : 0;
-    const emprPfMonthly = pfOn ? Math.round(bSalary * 0.12) : 0;
+    // PF is calculated on 40% of salary
+    const pfWageMonthly = bSalary * 0.40;
+    const empPfMonthly = pfOn ? Math.round(pfWageMonthly * 0.12) : 0;
+    const emprPfMonthly = pfOn ? Math.round(pfWageMonthly * 0.12) : 0;
     const totalPfMonthly = empPfMonthly + emprPfMonthly;
 
     const dailyEmpPf = totalDays > 0 ? Math.round((empPfMonthly / totalDays) * 100) / 100 : 0;
@@ -908,8 +918,10 @@ const AdminDashboard = () => {
     }
 
     grossEarned = Math.round(grossEarned * 100) / 100;
-    const empPfDeduction = pfOn ? Math.round(grossEarned * 0.12) : 0;
-    const emprPfContrib = pfOn ? Math.round(grossEarned * 0.12) : 0;
+    // PF is calculated on 40% of salary
+    const grossPfWage = grossEarned * 0.40;
+    const empPfDeduction = pfOn ? Math.round(grossPfWage * 0.12) : 0;
+    const emprPfContrib = pfOn ? Math.round(grossPfWage * 0.12) : 0;
     const totalPfFund = empPfDeduction + emprPfContrib;
     const totalAdvance = found?.deductions?.totalAdvance || 0;
     const advancesList = found?.deductions?.advancesList || [];
@@ -993,8 +1005,9 @@ const AdminDashboard = () => {
   const handleSaveSalaryConfig = async () => {
     if (!editingStaffConfig) return;
     const salaryVal = parseFloat(configBaseSalary) || 0;
-    const empPf = configPfEnabled ? Math.round(salaryVal * 0.12) : 0;
-    const emprPf = configPfEnabled ? Math.round(salaryVal * 0.12) : 0;
+    const pfWage = salaryVal * 0.40;
+    const empPf = configPfEnabled ? Math.round(pfWage * 0.12) : 0;
+    const emprPf = configPfEnabled ? Math.round(pfWage * 0.12) : 0;
     const totalPf = empPf + emprPf;
     const netTakeHome = Math.max(0, salaryVal - empPf);
 
@@ -1041,8 +1054,9 @@ const AdminDashboard = () => {
             const totalDays = sp.totalDaysInMonth || 30;
             const dailyRate = Math.round((salaryVal / totalDays) * 100) / 100;
             const grossEarned = Math.round(dailyRate * worked * 100) / 100;
-            const pfEmpDeduction = configPfEnabled ? Math.round(grossEarned * 0.12) : 0;
-            const pfEmprContribution = configPfEnabled ? Math.round(grossEarned * 0.12) : 0;
+            const pfWage = grossEarned * 0.40;
+            const pfEmpDeduction = configPfEnabled ? Math.round(pfWage * 0.12) : 0;
+            const pfEmprContribution = configPfEnabled ? Math.round(pfWage * 0.12) : 0;
             const totalAdvance = sp.deductions?.totalAdvance || 0;
             const netPayable = Math.max(0, grossEarned - pfEmpDeduction - totalAdvance);
             return {
@@ -1626,8 +1640,10 @@ const AdminDashboard = () => {
                 {staffList.map((staff) => {
                   const baseSalary = staff.baseSalary || 0;
                   const pfEnabled = typeof staff.pfEnabled === 'boolean' ? staff.pfEnabled : true;
-                  const empPf = pfEnabled ? Math.round(baseSalary * 0.12) : 0;
-                  const emprPf = pfEnabled ? Math.round(baseSalary * 0.12) : 0;
+                  // PF is calculated on 40% of total salary
+                  const pfWage = baseSalary * 0.40;
+                  const empPf = pfEnabled ? Math.round(pfWage * 0.12) : 0;
+                  const emprPf = pfEnabled ? Math.round(pfWage * 0.12) : 0;
                   const totalPf = empPf + emprPf;
                   const netSalary = pfEnabled ? Math.max(0, baseSalary - empPf) : baseSalary;
 
@@ -1670,7 +1686,7 @@ const AdminDashboard = () => {
                         <View style={styles.profileSalaryTitleRow}>
                           <Text style={styles.profileSalaryTitle}>📜 MONTHLY SALARY STATEMENT</Text>
                           <Text style={styles.profilePfBadge}>
-                            {pfEnabled ? '✓ PF Active: 12% + 12%' : '○ PF Disabled'}
+                            {pfEnabled ? '✓ PF Active: 12% + 12% on 40% Wage' : '○ PF Disabled'}
                           </Text>
                         </View>
 
@@ -1678,6 +1694,14 @@ const AdminDashboard = () => {
                         <View style={styles.profileSalaryRow}>
                           <Text style={styles.profileSalaryLabel}>Total salary:</Text>
                           <Text style={styles.profileSalaryTotalVal}>₹{baseSalary.toLocaleString()}</Text>
+                        </View>
+
+                        {/* PF eligible wage (40% basis) */}
+                        <View style={styles.profileSalaryRow}>
+                          <Text style={styles.profileSalaryLabel}>PF eligible wage (40% of total):</Text>
+                          <Text style={[styles.profileSalaryLabel, { fontWeight: '800', color: colors.primaryDark }]}>
+                            ₹{pfWage.toLocaleString()}
+                          </Text>
                         </View>
 
                         {/* 2. Net salary */}
@@ -1691,7 +1715,7 @@ const AdminDashboard = () => {
 
                         {/* 3. PF given by employee */}
                         <View style={styles.profileSalaryRow}>
-                          <Text style={styles.profileSalaryLabel}>PF given by employee (12% of total salary):</Text>
+                          <Text style={styles.profileSalaryLabel}>PF given by employee (12% of 40% wage):</Text>
                           <Text style={styles.profileSalaryEmpPf}>
                             {pfEnabled ? `- ₹${empPf.toLocaleString()}` : '₹0'}
                           </Text>
@@ -1699,7 +1723,7 @@ const AdminDashboard = () => {
 
                         {/* 4. PF given by the employer */}
                         <View style={styles.profileSalaryRow}>
-                          <Text style={styles.profileSalaryLabel}>PF given by the employer (12% of total salary):</Text>
+                          <Text style={styles.profileSalaryLabel}>PF given by the employer (12% of 40% wage):</Text>
                           <Text style={styles.profileSalaryEmprPf}>
                             {pfEnabled ? `+ ₹${emprPf.toLocaleString()}` : '₹0'}
                           </Text>
@@ -1707,7 +1731,7 @@ const AdminDashboard = () => {
 
                         {/* Total PF Fund Deposited */}
                         <View style={styles.profileTotalPfRow}>
-                          <Text style={styles.profileTotalPfLabel}>Total PF Deposited (24% into fund):</Text>
+                          <Text style={styles.profileTotalPfLabel}>Total PF Deposited (24% of 40% wage):</Text>
                           <Text style={styles.profileTotalPfVal}>₹{totalPf.toLocaleString()}</Text>
                         </View>
                       </View>
@@ -2412,33 +2436,42 @@ const AdminDashboard = () => {
                       <View style={styles.payrollDeductionBox}>
                         <View style={styles.deductionItemRow}>
                           <Text style={styles.deductionItemLabel}>
-                            PF Employee (12% Deducted from salary):
+                            PF Wage Basis (40% of salary):
+                          </Text>
+                          <Text style={[styles.deductionItemValue, { color: colors.primaryDark }]}>
+                            ₹{Math.round((staff.grossEarned || staff.user.baseSalary || 0) * 0.40).toLocaleString()}
+                          </Text>
+                        </View>
+
+                        <View style={styles.deductionItemRow}>
+                          <Text style={styles.deductionItemLabel}>
+                            PF Employee (12% of 40% wage):
                           </Text>
                           <Text style={[styles.deductionItemValue, { color: colors.dirty }]}>
                             {staff.deductions.pfEnabled
-                              ? `- ₹${(staff.deductions.pfEmployeeDeduction || staff.deductions.pfDeduction || Math.round((staff.grossEarned || staff.user.baseSalary || 0) * 0.12)).toLocaleString()}`
+                              ? `- ₹${(staff.deductions.pfEmployeeDeduction || staff.deductions.pfDeduction || Math.round((staff.grossEarned || staff.user.baseSalary || 0) * 0.40 * 0.12)).toLocaleString()}`
                               : '₹0 (Inactive)'}
                           </Text>
                         </View>
 
                         <View style={styles.deductionItemRow}>
                           <Text style={styles.deductionItemLabel}>
-                            PF Employer (12% Admin contribution to PF fund):
+                            PF Employer (12% of 40% wage):
                           </Text>
                           <Text style={[styles.deductionItemValue, { color: colors.available }]}>
                             {staff.deductions.pfEnabled
-                              ? `+ ₹${(staff.deductions.pfEmployerContribution || Math.round((staff.grossEarned || staff.user.baseSalary || 0) * 0.12)).toLocaleString()}`
+                              ? `+ ₹${(staff.deductions.pfEmployerContribution || Math.round((staff.grossEarned || staff.user.baseSalary || 0) * 0.40 * 0.12)).toLocaleString()}`
                               : '₹0 (Inactive)'}
                           </Text>
                         </View>
 
                         <View style={styles.deductionItemRow}>
                           <Text style={styles.deductionItemLabel}>
-                            Total Monthly PF Fund (24% into employee PF):
+                            Total Monthly PF Fund (24% of 40% wage):
                           </Text>
                           <Text style={[styles.deductionItemValue, { color: '#B8860B', fontWeight: '800' }]}>
                             {staff.deductions.pfEnabled
-                              ? `₹${(staff.deductions.totalPfFund || Math.round((staff.grossEarned || staff.user.baseSalary || 0) * 0.24)).toLocaleString()}`
+                              ? `₹${(staff.deductions.totalPfFund || Math.round((staff.grossEarned || staff.user.baseSalary || 0) * 0.40 * 0.24)).toLocaleString()}`
                               : '₹0'}
                           </Text>
                         </View>
@@ -3084,28 +3117,35 @@ const AdminDashboard = () => {
                     </View>
 
                     <View style={styles.deductionLine}>
-                      <Text style={styles.deductionLabel}>PF given by employee (12% of total salary):</Text>
+                      <Text style={styles.deductionLabel}>PF eligible wage (40% of salary):</Text>
+                      <Text style={[styles.deductionValue, { color: colors.primaryDark, fontWeight: '800' }]}>
+                        ₹{Math.round((selectedStaffForDayWise.grossEarned || selectedStaffForDayWise.user?.baseSalary || 0) * 0.40).toLocaleString()}
+                      </Text>
+                    </View>
+
+                    <View style={styles.deductionLine}>
+                      <Text style={styles.deductionLabel}>PF given by employee (12% of 40% wage):</Text>
                       <Text style={[styles.deductionValue, { color: colors.dirty }]}>
                         {selectedStaffForDayWise.deductions.pfEnabled
-                          ? `- ₹${(selectedStaffForDayWise.deductions.pfEmployeeDeduction || selectedStaffForDayWise.deductions.pfDeduction || Math.round((selectedStaffForDayWise.user?.baseSalary || 0) * 0.12)).toLocaleString()}`
+                          ? `- ₹${(selectedStaffForDayWise.deductions.pfEmployeeDeduction || selectedStaffForDayWise.deductions.pfDeduction || Math.round((selectedStaffForDayWise.grossEarned || selectedStaffForDayWise.user?.baseSalary || 0) * 0.40 * 0.12)).toLocaleString()}`
                           : '₹0'}
                       </Text>
                     </View>
 
                     <View style={styles.deductionLine}>
-                      <Text style={styles.deductionLabel}>PF given by the employer (12% of total salary):</Text>
+                      <Text style={styles.deductionLabel}>PF given by the employer (12% of 40% wage):</Text>
                       <Text style={[styles.deductionValue, { color: colors.available }]}>
                         {selectedStaffForDayWise.deductions.pfEnabled
-                          ? `+ ₹${(selectedStaffForDayWise.deductions.pfEmployerContribution || Math.round((selectedStaffForDayWise.user?.baseSalary || 0) * 0.12)).toLocaleString()}`
+                          ? `+ ₹${(selectedStaffForDayWise.deductions.pfEmployerContribution || Math.round((selectedStaffForDayWise.grossEarned || selectedStaffForDayWise.user?.baseSalary || 0) * 0.40 * 0.12)).toLocaleString()}`
                           : '₹0'}
                       </Text>
                     </View>
 
                     <View style={styles.deductionLine}>
-                      <Text style={styles.deductionLabel}>Total PF Deposited (24% into fund):</Text>
+                      <Text style={styles.deductionLabel}>Total PF Deposited (24% of 40% wage):</Text>
                       <Text style={[styles.deductionValue, { color: '#B8860B', fontWeight: '900' }]}>
                         {selectedStaffForDayWise.deductions.pfEnabled
-                          ? `₹${(selectedStaffForDayWise.deductions.totalPfFund || Math.round((selectedStaffForDayWise.user?.baseSalary || 0) * 0.24)).toLocaleString()}`
+                          ? `₹${(selectedStaffForDayWise.deductions.totalPfFund || Math.round((selectedStaffForDayWise.grossEarned || selectedStaffForDayWise.user?.baseSalary || 0) * 0.40 * 0.24)).toLocaleString()}`
                           : '₹0'}
                       </Text>
                     </View>
@@ -3254,8 +3294,10 @@ const AdminDashboard = () => {
             {/* Live Calculation Preview Card */}
             {(() => {
               const totalVal = parseFloat(configBaseSalary) || 0;
-              const empPf = configPfEnabled ? Math.round(totalVal * 0.12) : 0;
-              const emprPf = configPfEnabled ? Math.round(totalVal * 0.12) : 0;
+              // PF is calculated on 40% of total salary
+              const pfWageBasis = totalVal * 0.40;
+              const empPf = configPfEnabled ? Math.round(pfWageBasis * 0.12) : 0;
+              const emprPf = configPfEnabled ? Math.round(pfWageBasis * 0.12) : 0;
               const totalPf = empPf + emprPf;
               const netVal = configPfEnabled ? Math.max(0, totalVal - empPf) : totalVal;
               return (
@@ -3268,21 +3310,28 @@ const AdminDashboard = () => {
                   </View>
 
                   <View style={styles.previewRow}>
-                    <Text style={styles.previewLabel}>PF Employee (12% Deducted from salary):</Text>
+                    <Text style={styles.previewLabel}>PF Wage Basis (40% of Total Salary):</Text>
+                    <Text style={[styles.previewValueBold, { color: colors.primaryDark }]}>
+                      ₹{pfWageBasis.toLocaleString()}
+                    </Text>
+                  </View>
+
+                  <View style={styles.previewRow}>
+                    <Text style={styles.previewLabel}>PF Employee (12% of 40% wage):</Text>
                     <Text style={[styles.previewValue, { color: colors.dirty }]}>
                       {configPfEnabled ? `- ₹${empPf.toLocaleString()}` : '₹0 (Disabled)'}
                     </Text>
                   </View>
 
                   <View style={styles.previewRow}>
-                    <Text style={styles.previewLabel}>PF Employer (12% Admin contribution to PF fund):</Text>
+                    <Text style={styles.previewLabel}>PF Employer (12% of 40% wage):</Text>
                     <Text style={[styles.previewValue, { color: colors.available }]}>
                       {configPfEnabled ? `+ ₹${emprPf.toLocaleString()}` : '₹0 (Disabled)'}
                     </Text>
                   </View>
 
                   <View style={styles.previewRow}>
-                    <Text style={styles.previewLabel}>Total PF Deposited (24% into fund):</Text>
+                    <Text style={styles.previewLabel}>Total PF Deposited (24% of 40% wage):</Text>
                     <Text style={[styles.previewValue, { color: '#B8860B', fontWeight: '800' }]}>
                       {configPfEnabled ? `₹${totalPf.toLocaleString()}` : '₹0'}
                     </Text>

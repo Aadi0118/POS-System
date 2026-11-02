@@ -29,8 +29,10 @@ const calculateStaffMonthSalary = async (user, month) => {
   const pfEmployerPercentage = user.employerPfPercentage || 12;
 
   const totalMonthlySalary = baseSalary;
-  const monthlyEmpPf = pfEnabled ? Math.round(totalMonthlySalary * (pfEmployeePercentage / 100)) : 0;
-  const monthlyEmprPf = pfEnabled ? Math.round(totalMonthlySalary * (pfEmployerPercentage / 100)) : 0;
+  // PF is calculated on 40% of total salary (e.g. 10,000 -> 4,000 wage basis -> 12% is 480)
+  const monthlyPfWage = totalMonthlySalary * 0.40;
+  const monthlyEmpPf = pfEnabled ? Math.round(monthlyPfWage * (pfEmployeePercentage / 100)) : 0;
+  const monthlyEmprPf = pfEnabled ? Math.round(monthlyPfWage * (pfEmployerPercentage / 100)) : 0;
   const monthlyNetSalary = Math.max(0, totalMonthlySalary - monthlyEmpPf);
 
   const dailyRate =
@@ -141,14 +143,12 @@ const calculateStaffMonthSalary = async (user, month) => {
 
   const totalAdvance = advances.reduce((sum, a) => sum + (a.amount || 0), 0);
 
-  // Deductions: Provident Fund (PF)
-  const pfEmployeeDeduction = pfEnabled ? Math.round(grossEarned * (pfEmployeePercentage / 100)) : 0;
-  const pfEmployerContribution = pfEnabled ? Math.round(grossEarned * (pfEmployerPercentage / 100)) : 0;
+  // Deductions: Provident Fund (PF calculated on 40% of gross earned)
+  const grossPfWage = grossEarned * 0.40;
+  const pfEmployeeDeduction = pfEnabled ? Math.round(grossPfWage * (pfEmployeePercentage / 100)) : 0;
+  const pfEmployerContribution = pfEnabled ? Math.round(grossPfWage * (pfEmployerPercentage / 100)) : 0;
   const totalPfFund = pfEmployeeDeduction + pfEmployerContribution;
   const pfDeduction = pfEmployeeDeduction;
-
-
-
 
   const totalDeductions = totalAdvance + pfDeduction;
   const netPayable = Math.max(0, Math.round(grossEarned - totalDeductions));
@@ -179,6 +179,7 @@ const calculateStaffMonthSalary = async (user, month) => {
     month,
     monthlySalary: {
       totalSalary: totalMonthlySalary,
+      pfWageBasis: monthlyPfWage,
       netSalary: monthlyNetSalary,
       pfEmployee: monthlyEmpPf,
       pfEmployer: monthlyEmprPf,
@@ -201,6 +202,7 @@ const calculateStaffMonthSalary = async (user, month) => {
       pfEnabled,
       pfPercentage: pfEmployeePercentage,
       employerPfPercentage,
+      pfWageBasis: grossPfWage,
       pfDeduction,
       pfEmployeeDeduction,
       pfEmployerContribution,

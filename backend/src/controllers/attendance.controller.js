@@ -74,8 +74,10 @@ const getDailyAttendance = async (req, res, next) => {
       const pfEmpPct = staff.pfPercentage || 12;
       const pfEmprPct = staff.employerPfPercentage || 12;
 
-      const monthlyEmpPf = pfEnabled ? Math.round(baseSalary * (pfEmpPct / 100)) : 0;
-      const monthlyEmprPf = pfEnabled ? Math.round(baseSalary * (pfEmprPct / 100)) : 0;
+      // PF is calculated on 40% of total salary
+      const monthlyPfWage = baseSalary * 0.40;
+      const monthlyEmpPf = pfEnabled ? Math.round(monthlyPfWage * (pfEmpPct / 100)) : 0;
+      const monthlyEmprPf = pfEnabled ? Math.round(monthlyPfWage * (pfEmprPct / 100)) : 0;
       const monthlyNetSalary = Math.max(0, baseSalary - monthlyEmpPf);
 
       const dailyRate = totalDaysInMonth > 0 ? Math.round((baseSalary / totalDaysInMonth) * 100) / 100 : 0;
@@ -393,8 +395,10 @@ const getStaffHistory = async (req, res, next) => {
     const pfEmpPct = staff.pfPercentage || 12;
     const pfEmprPct = staff.employerPfPercentage || 12;
 
-    const monthlyEmpPf = pfEnabled ? Math.round(baseSalary * (pfEmpPct / 100)) : 0;
-    const monthlyEmprPf = pfEnabled ? Math.round(baseSalary * (pfEmprPct / 100)) : 0;
+    // PF is calculated on 40% of total salary
+    const monthlyPfWage = baseSalary * 0.40;
+    const monthlyEmpPf = pfEnabled ? Math.round(monthlyPfWage * (pfEmpPct / 100)) : 0;
+    const monthlyEmprPf = pfEnabled ? Math.round(monthlyPfWage * (pfEmprPct / 100)) : 0;
     const monthlyNetSalary = Math.max(0, baseSalary - monthlyEmpPf);
 
     const dailyRate = totalDaysInMonth > 0 ? Math.round((baseSalary / totalDaysInMonth) * 100) / 100 : 0;
