@@ -1133,9 +1133,11 @@ const AdminDashboard = () => {
       return;
     }
 
+    const targetUserId = selectedStaffForAdvance.user?._id || selectedStaffForAdvance._id;
+
     try {
       const res = await apiClient.post('/salary/advance', {
-        userId: selectedStaffForAdvance.user._id,
+        userId: targetUserId,
         month: payrollMonth,
         date: advanceDate,
         amount: parseFloat(advanceAmount),
@@ -1187,9 +1189,9 @@ const AdminDashboard = () => {
   const handleOpenPayoutModal = (staffPayroll) => {
     setSelectedStaffForPayout(staffPayroll);
     const balance =
-      staffPayroll.payout.balanceRemaining > 0
+      staffPayroll?.payout?.balanceRemaining > 0
         ? staffPayroll.payout.balanceRemaining
-        : staffPayroll.netPayable;
+        : (staffPayroll?.netPayable ?? staffPayroll?.baseSalary ?? 0);
     setPayoutAmount(String(balance));
     setPayoutPaymentMode('Cash');
     setPayoutPaymentStatus('Paid');
@@ -1203,9 +1205,11 @@ const AdminDashboard = () => {
       return;
     }
 
+    const targetUserId = selectedStaffForPayout.user?._id || selectedStaffForPayout._id;
+
     try {
       const res = await apiClient.post('/salary/payout', {
-        userId: selectedStaffForPayout.user._id,
+        userId: targetUserId,
         month: payrollMonth,
         amountPaid: parseFloat(payoutAmount) || 0,
         paymentMode: payoutPaymentMode,
@@ -2564,8 +2568,10 @@ const AdminDashboard = () => {
                     .filter((s) => s.role !== 'Admin')
                     .map((staff) => {
                       const salaryVal = staff.baseSalary || 0;
-                      const empPf = staff.pfEnabled ? Math.round(salaryVal * 0.12) : 0;
-                      const emprPf = staff.pfEnabled ? Math.round(salaryVal * 0.12) : 0;
+                      // Monthly PF calculated on 40% of base monthly salary
+                      const pfWage = salaryVal * 0.40;
+                      const empPf = staff.pfEnabled ? Math.round(pfWage * 0.12) : 0;
+                      const emprPf = staff.pfEnabled ? Math.round(pfWage * 0.12) : 0;
                       const totalPf = empPf + emprPf;
                       const netPayable = staff.pfEnabled ? Math.max(0, salaryVal - empPf) : salaryVal;
 
@@ -2607,21 +2613,54 @@ const AdminDashboard = () => {
                               <Text style={styles.deductionItemValue}>₹{salaryVal.toLocaleString()}</Text>
                             </View>
                             <View style={styles.deductionItemRow}>
-                              <Text style={styles.deductionItemLabel}>PF Employee (12% Deducted from salary):</Text>
+                              <Text style={styles.deductionItemLabel}>PF Eligible Wage Basis (40% of Total Salary):</Text>
+                              <Text style={[styles.deductionItemValue, { color: colors.primaryDark, fontWeight: '800' }]}>
+                                {staff.pfEnabled ? `₹${Math.round(pfWage).toLocaleString()}` : '₹0 (Off)'}
+                              </Text>
+                            </View>
+                            <View style={styles.deductionItemRow}>
+                              <Text style={styles.deductionItemLabel}>PF Employee (12% of 40% wage basis):</Text>
                               <Text style={[styles.deductionItemValue, { color: colors.dirty }]}>{staff.pfEnabled ? `- ₹${empPf.toLocaleString()}` : '₹0 (Off)'}</Text>
                             </View>
                             <View style={styles.deductionItemRow}>
-                              <Text style={styles.deductionItemLabel}>PF Employer (12% Admin contribution to PF):</Text>
+                              <Text style={styles.deductionItemLabel}>PF Employer (12% of 40% wage basis):</Text>
                               <Text style={[styles.deductionItemValue, { color: colors.available }]}>{staff.pfEnabled ? `+ ₹${emprPf.toLocaleString()}` : '₹0 (Off)'}</Text>
                             </View>
                             <View style={styles.deductionItemRow}>
-                              <Text style={styles.deductionItemLabel}>Total PF Deposited in Fund (24%):</Text>
+                              <Text style={styles.deductionItemLabel}>Total PF Deposited in Fund (24% of 40% wage):</Text>
                               <Text style={[styles.deductionItemValue, { color: '#B8860B', fontWeight: '800' }]}>{staff.pfEnabled ? `₹${totalPf.toLocaleString()}` : '₹0'}</Text>
                             </View>
                             <View style={styles.deductionTotalRow}>
                               <Text style={styles.deductionTotalLabel}>Net Salary (After PF deduction):</Text>
                               <Text style={[styles.deductionTotalValue, { color: colors.available }]}>₹{netPayable.toLocaleString()}</Text>
                             </View>
+                          </View>
+
+                          {/* Action Controls for Staff */}
+                          <View style={styles.payrollActionRow}>
+                            <TouchableOpacity
+                              style={styles.advanceActionBtn}
+                              onPress={() => handleOpenAdvanceModal(staff)}
+                              activeOpacity={0.8}
+                            >
+                              <Text style={styles.advanceActionBtnText}>💸 Advance</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                              style={styles.payoutActionBtn}
+                              onPress={() => handleOpenPayoutModal(staff)}
+                              activeOpacity={0.8}
+                            >
+                              <Text style={styles.payoutActionBtnText}>💳 Pay Salary</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                              style={styles.dayWiseActionBtn}
+                              onPress={() => handleOpenDayWiseModal(staff)}
+                              activeOpacity={0.8}
+                            >
+                              <Text style={styles.dayWiseActionBtnText}>📅 Day-Wise Log →</Text>
+                            </TouchableOpacity>
                           </View>
                         </View>
                       );
@@ -3390,7 +3429,7 @@ const AdminDashboard = () => {
           <View style={styles.modalCard}>
             <Text style={styles.modalCardTitle}>Disburse Advance Salary</Text>
             <Text style={styles.noteModalSubtitle}>
-              For {selectedStaffForAdvance?.user?.name} • Settlement Month: {payrollMonth}
+              For {selectedStaffForAdvance?.user?.name || selectedStaffForAdvance?.name} • Settlement Month: {payrollMonth}
             </Text>
             <GoldDivider />
 
@@ -3482,14 +3521,14 @@ const AdminDashboard = () => {
           <View style={styles.modalCard}>
             <Text style={styles.modalCardTitle}>Record Salary Payout</Text>
             <Text style={styles.noteModalSubtitle}>
-              For {selectedStaffForPayout?.user?.name} • Month: {formatDisplayMonth(payrollMonth)}
+              For {selectedStaffForPayout?.user?.name || selectedStaffForPayout?.name} • Month: {formatDisplayMonth(payrollMonth)}
             </Text>
             <GoldDivider />
 
             <View style={styles.payoutNetBanner}>
               <Text style={styles.payoutNetLabel}>TOTAL NET PAYABLE DUE</Text>
               <Text style={styles.payoutNetValue}>
-                ₹{selectedStaffForPayout?.netPayable?.toLocaleString()}
+                ₹{(selectedStaffForPayout?.netPayable ?? selectedStaffForPayout?.baseSalary ?? 0).toLocaleString()}
               </Text>
             </View>
 
